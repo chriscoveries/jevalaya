@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" role="img" aria-labelledby="title desc">
+  <title id="title">jevalaya logo</title>
+  <desc id="desc">A blue rail junction that enters as one line and exits as three, beside the jevalaya wordmark.</desc>
+
+  <rect width="320" height="96" fill="#0d1117"/>
+
+  <g fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 48H50"/>
+    <path d="M50 48C69 48 75 24 102 24"/>
+    <path d="M50 48C70 48 82 48 102 48"/>
+    <path d="M50 48C69 48 75 72 102 72"/>
+  </g>
+
+  <text x="120" y="59"
+        fill="#f0f6fc"
+        font-family="ui-monospace, 'SF Mono', Menlo, monospace"
+        font-size="34"
+        font-weight="600"
+        letter-spacing="-1.4">jevalaya</text>
+</svg>

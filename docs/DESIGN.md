@@ -542,7 +542,7 @@ Status: proposed, offline/shadow experiment for T024; not a relaxation of the pr
 4. Test confidence/margin-weighted pooling, rank fusion, and head/tail weighting as ablations after the unweighted baseline. They add assumptions that must earn their complexity on held-out labels.
 5. Leave hierarchical meta-questions last. They change the task twice, cost another call, and cannot restore discarded evidence.
 
-The reported service baseline is roughly 77 ms per warm serial ANE call, not a new measurement in this design. Two/four chunks therefore spend roughly 154/308 ms in backend work alone before routing or escalation. Chunking is not a way to meet the current sub-100 ms common-path target on those timings. Its plausible value is a measured energy/resource tradeoff or a disagreement signal; neither is established by making all slices fit. Record actual elapsed latency, not `k × single-call p95` presented as a measured percentile.
+The reported service baseline is roughly 77 ms per warm serial ANE call (this dev host: M1 Max, shared load — treat as a floor, not a ceiling; upstream laya-coreml measured ~8 ms p50 on M3 Max), not a new measurement in this design. Two/four chunks therefore spend roughly 154/308 ms in backend work alone before routing or escalation. Chunking is not a way to meet the current sub-100 ms common-path target on those timings. Its plausible value is a measured energy/resource tradeoff or a disagreement signal; neither is established by making all slices fit. Record actual elapsed latency, not `k × single-call p95` presented as a measured percentile.
 
 ### Geometry and exact prompt budget
 
