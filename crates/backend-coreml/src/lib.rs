@@ -487,17 +487,26 @@ impl AneBackend {
         };
         let state = self.state.clone();
         std::thread::spawn(move || {
-            let r = ctx.load();
+            // A panic inside the loader must still reach a terminal
+            // state — otherwise `loading` latches forever and preload
+            // waiters hang (a wedge of exactly the kind T021 fixed).
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| ctx.load()));
             let (mu, cv) = &*state;
             let mut inner = mu.lock().unwrap();
             inner.loading = false;
             match r {
-                Ok(model) => {
+                Ok(Ok(model)) => {
                     if inner.generation == generation {
                         inner.model = Some(model);
                     }
                 }
-                Err(e) => inner.load_error = Some(latched(&e)),
+                Ok(Err(e)) => inner.load_error = Some(latched(&e)),
+                Err(_) => {
+                    inner.load_error = Some((
+                        false,
+                        "ane load thread panicked".to_string(),
+                    ));
+                }
             }
             cv.notify_all();
         });
