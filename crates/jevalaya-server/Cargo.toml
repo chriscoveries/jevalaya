@@ -10,16 +10,21 @@ name = "jevalaya"
 path = "src/main.rs"
 
 [features]
-default = ["mlx"]
+default = ["mlx", "ane"]
 # The PyO3 bridge needs PYO3_PYTHON pointing at the laya-mlx venv at build
 # time (see backend-mlx-pyo3 header docs). --no-default-features builds a
 # no-MLX binary (Jev only) for hosts without the Python toolchain.
 mlx = ["dep:jevalaya-backend-mlx-pyo3"]
+# The CoreML adapter compiles on every host but only serves on macOS
+# arm64; off-target builds register an unavailable stub so config parity
+# tests stay honest.
+ane = ["dep:jevalaya-backend-coreml"]
 
 [dependencies]
 jevalaya-router-core = { path = "../router-core" }
 jevalaya-backend-jev = { path = "../backend-jev" }
 jevalaya-backend-mlx-pyo3 = { path = "../backend-mlx-pyo3", optional = true }
+jevalaya-backend-coreml = { path = "../backend-coreml", optional = true }
 axum = "0.8"
 tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "sync"] }
 futures = "0.3"

@@ -82,3 +82,34 @@ Verified gaps remaining:
     the criteria fix): escalated true, escalation_error "upstream",
     backend stayed mlx, degraded true — the safe-degradation contract held
     against a real provider failure.
+
+=== T004: CoreML ANE backend (crates/backend-coreml) ===
+
+Server boot with [ane] enabled=true, real bundle:
+  INFO ane backend registered: laya-coreml-ane B1 L96 K32 fp16 (cpu_ne)
+  /health -> backends.ane {available: true, detail: "laya-coreml-ane B1 L96 K32 fp16 (cpu_ne)"}
+  configured backends: [Ane, Mlx, Jev]; built: [Ane, Mlx] (jev: missing credential -> degraded)
+
+First cold load: sha256-verify 650MB package + compile mlpackage->mlmodelc
+  + MLModel load takes ~50s > request_timeout_ms=30000; the blocking load
+  survives the HTTP timeout, so the next request hits a resident model.
+  Operational note: set ane.preload=true or raise the timeout for production.
+
+POST /predict — German single-question (multilingual, 46 raw tokens <= 96):
+  -> 200 backend "ane", checkpoint "multilingual",
+     reason "ane_short_path: single multilingual prompt fits the ANE token budget",
+     ane_eligible true, token_count 46, answer "Rückerstattung anfordern"
+     conf 0.9978, act_probability 1.0, latency 77ms (vs ~400ms MLX).
+  Real CoreML inference on CPU+NeuralEngine: host-gathered fp16 embeddings,
+  key-major full/local masks, type vectors, marker map -> var_* logits +
+  pooled -> host fp32 action head -> laya answer.
+
+POST /route — German, 3 questions:
+  -> backend "mlx", reason "question_count: ..." (content gate beats ANE).
+
+POST /predict — English text:
+  -> backend "mlx", reason "not_multilingual" (checkpoint english never ANE).
+
+cargo test -p jevalaya-backend-coreml: 7 host unit tests + 4 adapter tests
+  green; live_ane_predict green against the real HF bundle (env-gated).
+cargo test --workspace: 65 tests green.

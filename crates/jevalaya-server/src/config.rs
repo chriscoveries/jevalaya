@@ -55,7 +55,7 @@ pub struct ModelsSection {
     pub typed_decisions: Option<String>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct AneSection {
     #[serde(default)]
     pub enabled: bool,
@@ -69,6 +69,14 @@ pub struct AneSection {
     pub prefer_ane_for_short: Option<bool>,
     #[serde(default)]
     pub preload: bool,
+    /// CoreML compute units for the ANE model: `cpu_ne` (default) /
+    /// `cpu` / `cpu_gpu` / `all`.
+    #[serde(default = "default_ane_compute_units")]
+    pub compute_units: String,
+    /// Where the symlink-free mlpackage copy is materialized
+    /// (default `$JEVALAYA_ANE_CACHE` or `~/Library/Caches/jevalaya/ane`).
+    #[serde(default)]
+    pub cache_dir: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -172,6 +180,24 @@ fn default_jev_retries() -> u32 {
 }
 fn default_queue_capacity() -> usize {
     1024
+}
+fn default_ane_compute_units() -> String {
+    "cpu_ne".to_string()
+}
+
+impl Default for AneSection {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            model: None,
+            max_tokens: None,
+            alignment: None,
+            prefer_ane_for_short: None,
+            preload: false,
+            compute_units: default_ane_compute_units(),
+            cache_dir: None,
+        }
+    }
 }
 
 impl Default for ServerSection {

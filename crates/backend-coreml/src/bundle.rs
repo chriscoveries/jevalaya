@@ -77,7 +77,12 @@ impl Bundle {
     /// existence only; content digests are checked by
     /// [`Bundle::verify_files`] during materialization/first load.
     pub fn open(dir: &Path) -> Result<Self, BundleError> {
-        let text = fs::read_to_string(dir.join("coreml_config.json"))?;
+        let text = fs::read_to_string(dir.join("coreml_config.json")).map_err(|e| {
+            BundleError::Manifest(format!(
+                "cannot read {}/coreml_config.json: {e}",
+                dir.display()
+            ))
+        })?;
         let config: CoremlConfig = serde_json::from_str(&text)
             .map_err(|e| BundleError::Manifest(format!("coreml_config.json: {e}")))?;
         if (config.format.as_str(), config.format_version) != ("laya-coreml-ane", 1) {
@@ -178,6 +183,17 @@ impl Bundle {
         let _ = fs::remove_dir_all(&tmp);
         self.verify_materialized(&dest)?;
         Ok(dest)
+    }
+
+    /// Where the compiled `model.mlmodelc` is cached: `cache_root/<key>/`,
+    /// same key as materialization. Never inside the (read-only) bundle.
+    pub fn compiled_model_dir(&self, cache_root: &Path) -> PathBuf {
+        let key = self
+            .config
+            .package_sha256
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
+        cache_root.join(key).join("model.mlmodelc")
     }
 
     /// Verify the materialized package members against manifest digests
