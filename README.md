@@ -1,4 +1,6 @@
-# jevalaya
+<p align="center"><img src="docs/assets/logo.svg" alt="jevalaya" width="320"></p>
+
+<p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
 Laissez les bons temps rouler, cher — this here's a fast little router for your Mac.
 
@@ -34,6 +36,8 @@ curl -s http://127.0.0.1:8767/predict \
       "criteria": {"billing": "...", "shipping": "..."}}}
   }'
 ```
+
+<p align="center"><img src="docs/assets/escalation.svg" alt="local when it's sure — Jev when it isn't" width="700"></p>
 
 ## The rules of the house
 
