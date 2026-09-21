@@ -20,11 +20,17 @@ sha2 = "0.10"
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 objc2 = "=0.6.4"
 objc2-foundation = { version = "=0.3.2", features = [
-    "NSString", "NSArray", "NSDictionary", "NSNumber", "NSURL", "NSError",
-    "NSObjCRuntime",
+    "NSString", "NSArray", "NSDictionary", "NSValue", "NSURL", "NSError",
+    "NSObjCRuntime", "NSProcessInfo",
 ] }
 objc2-core-ml = { version = "=0.3.2", features = [
     "MLModel", "MLModelConfiguration", "MLModelDescription", "MLMultiArray",
     "MLMultiArrayConstraint", "MLFeatureValue", "MLFeatureDescription",
-    "MLDictionaryFeatureProvider", "MLFeatureProvider",
+    "MLDictionaryFeatureProvider", "MLFeatureProvider", "block2",
 ] }
+block2 = { version = "0.6", features = ["alloc"] }
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread"] }

@@ -5,6 +5,7 @@ members = [
     "crates/render",
     "crates/backend-jev",
     "crates/backend-mlx-pyo3",
+    "crates/backend-coreml",
     "crates/jevalaya-server",
 ]
 

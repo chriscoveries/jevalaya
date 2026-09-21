@@ -97,11 +97,46 @@ fn maybe_mlx(_cfg: &ServerConfig) -> Option<Arc<dyn PredictBackend>> {
     None
 }
 
+/// Native CoreML/ANE adapter (T004). Off-target builds register nothing;
+/// a configured-but-broken bundle is a warning, not an exit.
+#[cfg(feature = "ane")]
+fn maybe_ane(cfg: &ServerConfig) -> Option<Arc<dyn PredictBackend>> {
+    use jevalaya_backend_coreml::{AneBackend, AneConfig};
+    if !cfg.ane.enabled {
+        return None;
+    }
+    let model = cfg.ane.model.as_ref()?;
+    let acfg = AneConfig {
+        model_dir: PathBuf::from(model),
+        compute_units: cfg.ane.compute_units.clone(),
+        cache_dir: cfg.ane.cache_dir.clone().map(PathBuf::from),
+    };
+    match AneBackend::new(acfg) {
+        Ok(b) => {
+            info!("ane backend registered: {}", b.detail_line());
+            Some(Arc::new(b))
+        }
+        Err(e) => {
+            warn!("ane enabled but bundle invalid: {e}");
+            None
+        }
+    }
+}
+
+#[cfg(not(feature = "ane"))]
+fn maybe_ane(_cfg: &ServerConfig) -> Option<Arc<dyn PredictBackend>> {
+    None
+}
+
 /// Construct backend adapters from config. Failures are warnings, not
 /// exits: the service boots with what it has and `degraded`/`/health`
 /// tell the truth.
 fn build_backends(cfg: &ServerConfig) -> HashMap<BackendKind, Arc<dyn PredictBackend>> {
     let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+
+    if let Some(b) = maybe_ane(cfg) {
+        backends.insert(BackendKind::Ane, b);
+    }
 
     if let Some(b) = maybe_mlx(cfg) {
         backends.insert(BackendKind::Mlx, b);
@@ -127,8 +162,6 @@ fn build_backends(cfg: &ServerConfig) -> HashMap<BackendKind, Arc<dyn PredictBac
         }
     }
 
-    // ANE (T004): target-gated CoreML adapter lands behind the same trait;
-    // until then [ane] contributes gate metadata via the prompt engine only.
     backends
 }
 

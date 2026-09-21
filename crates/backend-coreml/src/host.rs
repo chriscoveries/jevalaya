@@ -51,9 +51,8 @@ impl HostWeights {
         if map.len() < header_end {
             return Err(HostError::Format("safetensors header overruns file".into()));
         }
-        let header: HashMap<String, TensorMeta> =
-            serde_json::from_slice(&map[8..header_end])
-                .map_err(|e| HostError::Format(format!("safetensors header: {e}")))?;
+        let header: HashMap<String, TensorMeta> = serde_json::from_slice(&map[8..header_end])
+            .map_err(|e| HostError::Format(format!("safetensors header: {e}")))?;
         let mut w = Self {
             map,
             base: header_end,
@@ -69,8 +68,9 @@ impl HostWeights {
             .ok_or_else(|| HostError::Format(format!("missing tensor {name}")))
     }
 
-    /// Raw f16 bit slice of a 2-D tensor row (`[row*width ..]`).
-    pub fn row_f16(&self, name: &str, row: usize) -> Result<&[u16], HostError> {
+    /// Raw f16 bits of a 2-D tensor row (`[row*width ..]`). Copied:
+    /// safetensors data offsets are not guaranteed u16-aligned in the map.
+    pub fn row_f16(&self, name: &str, row: usize) -> Result<Vec<u16>, HostError> {
         let m = self.meta(name)?;
         if m.dtype != "F16" || m.shape.len() != 2 || row >= m.shape[0] {
             return Err(HostError::Format(format!("tensor {name} is not a 2-D F16")));
@@ -81,8 +81,10 @@ impl HostWeights {
         if end > self.map.len() {
             return Err(HostError::Format(format!("tensor {name} overruns file")));
         }
-        let bytes = &self.map[start..end];
-        Ok(bytemuck_f16_slice(bytes))
+        Ok(self.map[start..end]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect())
     }
 
     /// Whole tensor as f32 (small tensors only: the action head).
@@ -95,9 +97,9 @@ impl HostWeights {
         }
         let bytes = &self.map[start..end];
         let out: Vec<f32> = match m.dtype.as_str() {
-            "F16" => bytemuck_f16_slice(bytes)
-                .iter()
-                .map(|h| f16::from_bits(*h).to_f32())
+            "F16" => bytes
+                .chunks_exact(2)
+                .map(|c| f16::from_bits(u16::from_le_bytes([c[0], c[1]])).to_f32())
                 .collect(),
             "F32" => bytes
                 .chunks_exact(4)
@@ -117,22 +119,14 @@ impl HostWeights {
     }
 }
 
-fn bytemuck_f16_slice(bytes: &[u8]) -> &[u16] {
-    // safetensors payloads are little-endian and element-aligned.
-    let (pre, mid, post) = unsafe { bytes.align_to::<u16>() };
-    debug_assert!(pre.is_empty() && post.is_empty());
-    let _ = (pre, post);
-    mid
-}
-
 /// One CoreML-ready fp16 input set (C-order u16 buffers) plus the
 /// scalar metadata decode needs (`k`, `qtype`, raw length).
 pub struct AneInputs {
-    pub embeddings: Vec<u16>,  // [1, W, 1, L]
-    pub full_mask: Vec<u16>,   // [1, L, 1, L]
-    pub local_mask: Vec<u16>,  // [1, L, 1, L]
+    pub embeddings: Vec<u16>,   // [1, W, 1, L]
+    pub full_mask: Vec<u16>,    // [1, L, 1, L]
+    pub local_mask: Vec<u16>,   // [1, L, 1, L]
     pub type_vectors: Vec<u16>, // [1, W, 1, 1]
-    pub marker_map: Vec<u16>,  // [1, L, 1, K]
+    pub marker_map: Vec<u16>,   // [1, L, 1, K]
     pub k: usize,
     pub input_len: usize,
 }
@@ -236,9 +230,7 @@ pub fn build_inputs(
         }
     }
 
-    let type_vectors: Vec<u16> = weights
-        .row_f16("type_emb.weight", qtype as usize)?
-        .to_vec();
+    let type_vectors: Vec<u16> = weights.row_f16("type_emb.weight", qtype as usize)?;
 
     let mut marker_map = vec![zero; l * max_options];
     let one = f16::from_f32(1.0).to_bits();
@@ -277,6 +269,11 @@ pub fn decode_answer(
         return Err(HostError::NonFinite);
     }
     let kk = logits32.len();
+    if kk < 2 || k == 0 || k > kk {
+        return Err(HostError::Format(format!(
+            "logits length {kk} cannot serve k={k} options"
+        )));
+    }
     // Masked softmax across all K slots (invalid markers → -1e4).
     let mut masked = logits32.to_vec();
     for (i, v) in masked.iter_mut().enumerate() {
@@ -286,15 +283,12 @@ pub fn decode_answer(
     }
     let p32 = softmax(&masked);
     let k2 = k.max(2) as f32;
-    let entropy: f32 = -p32
-        .iter()
-        .map(|&p| p * p.max(1e-9).ln())
-        .sum::<f32>()
-        / k2.ln();
+    let entropy: f32 = -p32.iter().map(|&p| p * p.max(1e-9).ln()).sum::<f32>() / k2.ln();
     let mut sorted = p32.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let (top2, top1) = (sorted[kk - 2], sorted[kk - 1]);
-    let features = [top1, top1 - top2, entropy, k as f32 / 255.0];
+    // `k` is clamped before both the entropy norm and the k/255 feature.
+    let features = [top1, top1 - top2, entropy, k2 / 255.0];
     let mut x = pooled.to_vec();
     x.extend_from_slice(&features);
     let act = act_head.forward(&x);
@@ -309,10 +303,7 @@ pub fn decode_answer(
         .copied()
         .unwrap_or(temperature[qtype as usize])
         .max(1e-3);
-    let z: Vec<f32> = logits32[..k]
-        .iter()
-        .map(|v| *v / scale as f32)
-        .collect();
+    let z: Vec<f32> = logits32[..k].iter().map(|v| *v / scale as f32).collect();
     let p = softmax(&z);
     let t = qtype_name(qtype);
     let confidence = if k < 2 {
@@ -368,17 +359,11 @@ pub fn decode_answer(
         _ => {
             let p1 = p.get(1).copied().unwrap_or(0.0) as f64;
             answer.insert("noul".into(), json!(round4(p1)));
-            answer.insert(
-                "confidence".into(),
-                json!(round4(p1.max(1.0 - p1))),
-            );
+            answer.insert("confidence".into(), json!(round4(p1.max(1.0 - p1))));
         }
     }
     let mut action = Map::new();
-    action.insert(
-        "act_probability".into(),
-        json!(round4(actp[0] as f64)),
-    );
+    action.insert("act_probability".into(), json!(round4(actp[0] as f64)));
     answer.insert("action".into(), Value::Object(action));
     Ok(Value::Object(answer))
 }
@@ -399,7 +384,11 @@ impl ActHead {
         let (b0, _) = weights.vec_f32("act_head.0.bias")?;
         let (w2, s2) = weights.vec_f32("act_head.2.weight")?;
         let (b2, _) = weights.vec_f32("act_head.2.bias")?;
-        if s0.len() != 2 || s2.len() != 2 || s2[1] != s0[0] || b0.len() != s0[0] || b2.len() != s2[0]
+        if s0.len() != 2
+            || s2.len() != 2
+            || s2[1] != s0[0]
+            || b0.len() != s0[0]
+            || b2.len() != s2[0]
         {
             return Err(HostError::Format(format!(
                 "act head shape mismatch: w0={s0:?} w2={s2:?}"
@@ -422,12 +411,7 @@ impl ActHead {
         let mut h = vec![0f32; self.dim_h];
         for (r, row) in h.iter_mut().enumerate() {
             let w = &self.w0[r * self.dim_in..(r + 1) * self.dim_in];
-            *row = w
-                .iter()
-                .zip(x.iter())
-                .map(|(a, b)| a * b)
-                .sum::<f32>()
-                + self.b0[r];
+            *row = w.iter().zip(x.iter()).map(|(a, b)| a * b).sum::<f32>() + self.b0[r];
             *row *= (1.0 + libm::erf((*row as f64) / std::f64::consts::SQRT_2) as f32) / 2.0;
         }
         let mut out = vec![0f32; self.b2.len()];
@@ -474,4 +458,255 @@ fn qtype_name(qtype: u8) -> &'static str {
 /// Python `round(x, 4)` — half-to-even on a 1e4 grid.
 fn round4(x: f64) -> f64 {
     (x * 1e4).round_ties_even() / 1e4
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use jevalaya_render::to_internal;
+    use serde_json::json;
+    use std::io::Write;
+
+    /// Build a tiny safetensors file: embedding [8,4], type_emb [3,4],
+    /// act_head 8→3→2 — small enough to verify decode by hand.
+    fn fixture_weights() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("host_weights.safetensors");
+        let mut tensors: Vec<(String, Vec<usize>, Vec<f32>)> = Vec::new();
+        // embedding rows are just id/8 per channel so gathers are obvious.
+        tensors.push((
+            "encoder.embeddings.tok_embeddings.weight".into(),
+            vec![8, 4],
+            (0..32).map(|i| i as f32 / 8.0).collect(),
+        ));
+        tensors.push((
+            "type_emb.weight".into(),
+            vec![3, 4],
+            (0..12).map(|i| i as f32).collect(),
+        ));
+        tensors.push(("act_head.0.weight".into(), vec![3, 8], vec![0.0; 24]));
+        tensors.push(("act_head.0.bias".into(), vec![3], vec![0.0; 3]));
+        tensors.push((
+            "act_head.2.weight".into(),
+            vec![2, 3],
+            vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        ));
+        tensors.push(("act_head.2.bias".into(), vec![2], vec![0.5, -0.5]));
+
+        let mut data = Vec::new();
+        let mut header = Map::new();
+        for (name, shape, vals) in &tensors {
+            let start = data.len();
+            for v in vals {
+                data.extend_from_slice(&f16::from_f32(*v).to_bits().to_le_bytes());
+            }
+            header.insert(
+                name.clone(),
+                json!({
+                    "dtype": "F16",
+                    "shape": shape,
+                    "data_offsets": [start, data.len()],
+                }),
+            );
+        }
+        let header_bytes = serde_json::to_vec(&Value::Object(header)).unwrap();
+        let mut file = File::create(&path).unwrap();
+        file.write_all(&(header_bytes.len() as u64).to_le_bytes())
+            .unwrap();
+        file.write_all(&header_bytes).unwrap();
+        file.write_all(&data).unwrap();
+        (dir, path)
+    }
+
+    fn load_fixture() -> (tempfile::TempDir, HostWeights) {
+        let (dir, path) = fixture_weights();
+        let w = HostWeights::open(&path).unwrap();
+        (dir, w)
+    }
+
+    #[test]
+    fn gathers_embedding_columns_and_marker_map() {
+        let (_d, w) = load_fixture();
+        // hidden=4, L=8, K=4, window 4 (half=2)
+        let inputs = build_inputs(&w, &[2, 5, 7], &[1, 2], 0, 0, 8, 4, 4, 4).unwrap();
+        // embeddings[w*L+i] = E[id_i][w] = (id*4+w)/8
+        for (i, &id) in [2usize, 5, 7].iter().enumerate() {
+            for c in 0..4 {
+                let got = f16::from_bits(inputs.embeddings[c * 8 + i]).to_f32();
+                let want = (id * 4 + c) as f32 / 8.0;
+                assert_eq!(got, want, "embedding[{c}][{i}]");
+            }
+        }
+        // padded positions hold pad row 0
+        for i in 3..8 {
+            let got = f16::from_bits(inputs.embeddings[1 * 8 + i]).to_f32();
+            assert_eq!(got, 1.0 / 8.0);
+        }
+        // marker_map[pos*K + slot]
+        assert_eq!(f16::from_bits(inputs.marker_map[1 * 4 + 0]).to_f32(), 1.0);
+        assert_eq!(f16::from_bits(inputs.marker_map[2 * 4 + 1]).to_f32(), 1.0);
+        assert!(inputs
+            .marker_map
+            .iter()
+            .enumerate()
+            .all(|(i, &v)| (i == 4 || i == 9) || f16::from_bits(v).to_f32() == 0.0));
+        // type_vectors = row 0 of type_emb
+        for c in 0..4 {
+            assert_eq!(f16::from_bits(inputs.type_vectors[c]).to_f32(), c as f32);
+        }
+    }
+
+    #[test]
+    fn mask_layout_is_key_major_with_local_window() {
+        let (_d, w) = load_fixture();
+        // ids len 6 of an L=8 export; window half=2
+        let inputs = build_inputs(&w, &[1, 2, 3, 4, 5, 6], &[1], 2, 0, 8, 4, 4, 4).unwrap();
+        let at = |m: &Vec<u16>, j: usize, i: usize| f16::from_bits(m[j * 8 + i]).to_f32();
+        // full mask: invalid keys (j>=6) block every query
+        assert_eq!(at(&inputs.full_mask, 7, 0), -1e4);
+        assert_eq!(at(&inputs.full_mask, 0, 7), 0.0);
+        // local: |i-j|<=2 for valid queries; key must be valid
+        assert_eq!(at(&inputs.local_mask, 0, 0), 0.0);
+        assert_eq!(at(&inputs.local_mask, 5, 0), -1e4); // valid pair, |0-5|=5>2
+        assert_eq!(at(&inputs.local_mask, 2, 0), 0.0); // |0-2|<=2
+                                                       // invalid query (i=7) attends every VALID key (j=0)…
+        assert_eq!(at(&inputs.local_mask, 0, 7), 0.0);
+        // …but an invalid key (j=6) stays blocked even for invalid queries
+        assert_eq!(at(&inputs.local_mask, 6, 7), -1e4);
+        assert_eq!(at(&inputs.local_mask, 6, 0), -1e4);
+    }
+
+    #[test]
+    fn shape_validation_boundaries() {
+        let (_d, w) = load_fixture();
+        // vocab fixture is 8
+        assert!(build_inputs(&w, &[1, 2], &[1], 0, 0, 8, 4, 4, 4).is_ok());
+        assert!(build_inputs(&w, &[1, 2], &[1], 0, 0, 2, 4, 4, 4).is_ok()); // == limit
+        assert!(build_inputs(&w, &[1, 2, 3], &[1], 0, 0, 2, 4, 4, 4).is_err()); // over
+        assert!(build_inputs(&w, &[1, 2], &[1, 2, 3, 4, 5], 0, 0, 8, 4, 4, 4).is_err());
+        assert!(build_inputs(&w, &[1, 2], &[9], 0, 0, 8, 4, 4, 4).is_err()); // marker OOB
+        assert!(build_inputs(&w, &[1, 2], &[1], 3, 0, 8, 4, 4, 4).is_err()); // qtype
+        assert!(build_inputs(&w, &[1, 99], &[1], 0, 0, 8, 4, 4, 4).is_err()); // vocab
+        assert!(build_inputs(&w, &[], &[], 0, 0, 8, 4, 4, 4).is_err()); // empty
+    }
+
+    #[test]
+    fn decode_matches_reference_math() {
+        let (_d, w) = load_fixture();
+        let act = ActHead::load(&w).unwrap();
+        let qdef =
+            json!({"type": "choice", "instructions": "i", "criteria": {"a": null, "b": null}});
+        let question = to_internal(&qdef).unwrap();
+        // logits: option 1 clearly wins; k=2 of K=4
+        let logits = vec![0.0f32, 3.0, 7.0, -9.0];
+        let pooled = vec![0.1f32, 0.2, 0.3, 0.4];
+        let ans = decode_answer(
+            &logits,
+            &pooled,
+            2,
+            0,
+            &qdef,
+            &question,
+            &[1.0, 1.0, 1.0],
+            &HashMap::new(),
+            &act,
+        )
+        .unwrap();
+        assert_eq!(ans["type"], "choice");
+        assert_eq!(ans["choice"], "b");
+        let p_b = ans["probabilities"]["b"].as_f64().unwrap();
+        // softmax([0,3]) → e^3/(1+e^3) = 0.9526
+        assert!((p_b - 0.9526).abs() < 1e-3);
+        // act head: x = pooled ++ feats; w0=0 → h=0 → act=[0.5,-0.5] → p=[0.7311,0.2689]
+        let act_p = ans["action"]["act_probability"].as_f64().unwrap();
+        assert!((act_p - 0.7311).abs() < 1e-3);
+        assert_eq!(ans["action"]["act_probability"], json!(0.7311));
+    }
+
+    #[test]
+    fn decode_noul_and_score() {
+        let (_d, w) = load_fixture();
+        let act = ActHead::load(&w).unwrap();
+        let noul_def = json!({"type": "noul", "instructions": "holds?"});
+        let nq = to_internal(&noul_def).unwrap();
+        let ans = decode_answer(
+            &[0.0, 2.0, -3.0, -3.0],
+            &[0.0; 4],
+            2,
+            2,
+            &noul_def,
+            &nq,
+            &[1.0, 1.0, 1.0],
+            &HashMap::new(),
+            &act,
+        )
+        .unwrap();
+        // softmax([0,2]) → 0.8808
+        assert_eq!(ans["noul"], json!(0.8808));
+        assert_eq!(ans["confidence"], json!(0.8808));
+
+        let score_def =
+            json!({"type": "score", "instructions": "rate", "criteria": ["lo", "mid", "hi"]});
+        let sq = to_internal(&score_def).unwrap();
+        let ans = decode_answer(
+            &[0.0, 0.0, 2.0, -9.0],
+            &[0.0; 4],
+            3,
+            1,
+            &score_def,
+            &sq,
+            &[1.0, 1.0, 1.0],
+            &HashMap::new(),
+            &act,
+        )
+        .unwrap();
+        // softmax([0,0,2]) → [0.1065,0.1065,0.787] → E[level] ≈ 1.6805
+        let score = ans["score"].as_f64().unwrap();
+        assert!((score - 1.6805).abs() < 1e-3);
+        assert_eq!(ans["legend"]["2"], "hi");
+    }
+
+    #[test]
+    fn nonfinite_output_is_rejected() {
+        let (_d, w) = load_fixture();
+        let act = ActHead::load(&w).unwrap();
+        let qdef = json!({"type": "noul", "instructions": "i"});
+        let q = to_internal(&qdef).unwrap();
+        let err = decode_answer(
+            &[f32::NAN, 0.0, 0.0, 0.0],
+            &[0.0; 4],
+            2,
+            2,
+            &qdef,
+            &q,
+            &[1.0, 1.0, 1.0],
+            &HashMap::new(),
+            &act,
+        )
+        .unwrap_err();
+        assert!(matches!(err, HostError::NonFinite));
+    }
+
+    #[test]
+    fn temperature_scales_option_probs() {
+        let (_d, w) = load_fixture();
+        let act = ActHead::load(&w).unwrap();
+        let qdef = json!({"type": "choice", "instructions": "i", "criteria": ["a", "b"]});
+        let q = to_internal(&qdef).unwrap();
+        let cold = decode_answer(
+            &[0.0, 2.0, -9.0, -9.0],
+            &[0.0; 4],
+            2,
+            0,
+            &qdef,
+            &q,
+            &[0.5, 1.0, 1.0],
+            &HashMap::new(),
+            &act,
+        )
+        .unwrap();
+        // z = [0,4] → p_b = e^4/(1+e^4) = 0.982
+        let p_b = cold["probabilities"]["b"].as_f64().unwrap();
+        assert!((p_b - 0.982).abs() < 1e-3);
+    }
 }
