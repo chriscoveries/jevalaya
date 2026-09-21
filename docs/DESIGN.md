@@ -194,7 +194,7 @@ trait PredictBackend: Send + Sync {
 }
 ~~~
 
-CoreML prediction runs in bounded spawn_blocking. The embedded PyO3 bridge runs blocking Python/MLX work behind a bounded executor and a GIL-aware bridge; Jev uses async I/O. Backend adapters, not policy, translate native exceptions into typed errors.
+CoreML prediction runs in bounded spawn_blocking. The embedded PyO3 bridge runs blocking Python/MLX work behind a bounded executor and a GIL-aware bridge; Jev uses async I/O. Backend adapters, not policy, translate native exceptions into typed errors. Adapters that hold a Rust lock across a call into a runtime able to yield its own concurrency token (GIL, VM monitor) acquire the outer lock before the runtime token — e.g. the bridge mutex before `Python::attach`; the reverse order deadlocks when the held call re-enters for the token it released.
 
 ## Model source resolution and config
 
