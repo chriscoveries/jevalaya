@@ -1,0 +1,77 @@
+{
+  "model": "multilingual",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-multilingual-mlx/snapshots/f2b4faf51023039425946074e2cf1361d2db11d5",
+  "max_len": 1024,
+  "head_max_len": 256,
+  "specials": {
+    "cls_token": "<bos>",
+    "sep_token": "<eos>",
+    "pad_token": "<pad>",
+    "mask_token": "<mask>",
+    "cls_token_id": 2,
+    "sep_token_id": 1,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "case": "multilingual_zh",
+  "state": "发票被重复扣款，请退款。",
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "选择主题",
+      "criteria": [
+        "账单",
+        "退款",
+        "物流"
+      ]
+    }
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "账单",
+        "退款",
+        "物流"
+      ],
+      "ids": [
+        2,
+        6241,
+        2872,
+        235292,
+        129500,
+        53015,
+        1,
+        4,
+        235248,
+        238157,
+        236133,
+        4,
+        164047,
+        236604,
+        4,
+        42811,
+        236068,
+        1,
+        35550,
+        237232,
+        235936,
+        79825,
+        238498,
+        236604,
+        235365,
+        236343,
+        186612,
+        235362,
+        1
+      ],
+      "markers": [
+        7,
+        11,
+        14
+      ],
+      "raw_count": 29
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "config": "tiny",
+  "max_len": 128,
+  "head_max_len": 32,
+  "case": "multilingual_ar",
+  "state": "تم تحصيل رسوم مضاعفة من حسابي",
+  "questions": {
+    "ok": {
+      "type": "noul",
+      "instructions": "هل هذا صحيح؟"
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "ok",
+      "qtype": 2,
+      "options": [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds"
+      ],
+      "ids": [
+        2,
+        109,
+        121,
+        32,
+        169,
+        168,
+        165,
+        160,
+        3,
+        4,
+        80,
+        32,
+        106,
+        10,
+        137,
+        134,
+        75,
+        4,
+        142,
+        32,
+        154,
+        10,
+        137,
+        134,
+        87,
+        3,
+        162,
+        161,
+        164,
+        166,
+        167,
+        163,
+        3
+      ],
+      "markers": [
+        9,
+        17
+      ],
+      "raw_count": 33
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "model": "multilingual",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-multilingual-mlx/snapshots/f2b4faf51023039425946074e2cf1361d2db11d5",
+  "max_len": 1024,
+  "head_max_len": 256,
+  "specials": {
+    "cls_token": "<bos>",
+    "sep_token": "<eos>",
+    "pad_token": "<pad>",
+    "mask_token": "<mask>",
+    "cls_token_id": 2,
+    "sep_token_id": 1,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "case": "multilingual_ar",
+  "state": "تم تحصيل رسوم مضاعفة من حسابي",
+  "questions": {
+    "ok": {
+      "type": "noul",
+      "instructions": "هل هذا صحيح؟"
+    }
+  },
+  "items": [
+    {
+      "qid": "ok",
+      "qtype": 2,
+      "options": [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds"
+      ],
+      "ids": [
+        2,
+        552,
+        6311,
+        2872,
+        235292,
+        87228,
+        24008,
+        185639,
+        236391,
+        1,
+        4,
+        1566,
+        235292,
+        793,
+        235269,
+        573,
+        6218,
+        1721,
+        780,
+        3385,
+        4,
+        1382,
+        235292,
+        7778,
+        235269,
+        573,
+        6218,
+        12723,
+        1,
+        22129,
+        213902,
+        9253,
+        30594,
+        6801,
+        82289,
+        11184,
+        50575,
+        3710,
+        91255,
+        235384,
+        1
+      ],
+      "markers": [
+        10,
+        20
+      ],
+      "raw_count": 41
+    }
+  ]
+}

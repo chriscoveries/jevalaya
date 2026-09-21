@@ -1,0 +1,166 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "structured_criteria",
+  "state": {
+    "text": "你好",
+    "flag": false
+  },
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "Choose",
+      "criteria": {
+        "zero": 0,
+        "no": false,
+        "nested": {
+          "value": 3
+        },
+        "nothing": null,
+        "blank": ""
+      }
+    },
+    "level": {
+      "type": "score",
+      "instructions": "Level",
+      "criteria": [
+        "low",
+        {
+          "tier": 2
+        },
+        5
+      ]
+    }
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "zero: 0",
+        "no: false",
+        "nested: {\"value\": 3}",
+        "nothing",
+        "blank"
+      ],
+      "ids": [
+        50281,
+        22122,
+        1953,
+        27,
+        28890,
+        50282,
+        50284,
+        5058,
+        27,
+        470,
+        50284,
+        642,
+        27,
+        3221,
+        50284,
+        20494,
+        27,
+        17579,
+        2877,
+        1381,
+        495,
+        94,
+        50284,
+        2717,
+        50284,
+        9912,
+        50282,
+        9819,
+        1156,
+        1381,
+        346,
+        24553,
+        34439,
+        995,
+        346,
+        17101,
+        1381,
+        3221,
+        94,
+        50282
+      ],
+      "markers": [
+        6,
+        10,
+        14,
+        22,
+        24
+      ],
+      "raw_count": 40
+    },
+    {
+      "qid": "level",
+      "qtype": 1,
+      "options": [
+        "level 0: low",
+        "level 1: {\"tier\": 2}",
+        "level 2: 5"
+      ],
+      "ids": [
+        50281,
+        18891,
+        1953,
+        27,
+        15557,
+        50282,
+        50284,
+        1268,
+        470,
+        27,
+        1698,
+        50284,
+        1268,
+        337,
+        27,
+        17579,
+        42614,
+        1381,
+        374,
+        94,
+        50284,
+        1268,
+        374,
+        27,
+        608,
+        50282,
+        9819,
+        1156,
+        1381,
+        346,
+        24553,
+        34439,
+        995,
+        346,
+        17101,
+        1381,
+        3221,
+        94,
+        50282
+      ],
+      "markers": [
+        6,
+        11,
+        20
+      ],
+      "raw_count": 39
+    }
+  ]
+}

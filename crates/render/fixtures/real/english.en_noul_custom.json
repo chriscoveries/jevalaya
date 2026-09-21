@@ -1,0 +1,74 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "en_noul_custom",
+  "state": "delete my account now",
+  "questions": {
+    "risk": {
+      "type": "noul",
+      "instructions": "Is this high risk?",
+      "criteria": {
+        "false": "safe to proceed",
+        "true": "requires escalation"
+      }
+    }
+  },
+  "items": [
+    {
+      "qid": "risk",
+      "qtype": 2,
+      "options": [
+        "false: safe to proceed",
+        "true: requires escalation"
+      ],
+      "ids": [
+        50281,
+        79,
+        3941,
+        1953,
+        27,
+        1680,
+        436,
+        1029,
+        2495,
+        32,
+        50282,
+        50284,
+        3221,
+        27,
+        4999,
+        281,
+        4262,
+        50284,
+        2032,
+        27,
+        4419,
+        20092,
+        318,
+        50282,
+        16435,
+        619,
+        2395,
+        1024,
+        50282
+      ],
+      "markers": [
+        11,
+        17
+      ],
+      "raw_count": 29
+    }
+  ]
+}

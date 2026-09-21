@@ -1,0 +1,174 @@
+{
+  "config": "std",
+  "max_len": 512,
+  "head_max_len": 192,
+  "case": "multi_question_mixed",
+  "state": "The screen shows an error after payment",
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "Choose the topic",
+      "criteria": [
+        "billing",
+        "refund",
+        "shipping"
+      ]
+    },
+    "level": {
+      "type": "score",
+      "instructions": "Rate urgency",
+      "criteria": [
+        "low",
+        "high"
+      ]
+    },
+    "yes": {
+      "type": "noul",
+      "instructions": "Is this true?"
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "billing",
+        "refund",
+        "shipping"
+      ],
+      "ids": [
+        2,
+        69,
+        121,
+        32,
+        35,
+        137,
+        141,
+        3,
+        4,
+        64,
+        4,
+        123,
+        4,
+        130,
+        3,
+        45,
+        129,
+        132,
+        56,
+        76,
+        54,
+        119,
+        3
+      ],
+      "markers": [
+        8,
+        10,
+        12
+      ],
+      "raw_count": 23
+    },
+    {
+      "qid": "level",
+      "qtype": 1,
+      "options": [
+        "level 0: low",
+        "level 1: high"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        44,
+        144,
+        3,
+        4,
+        94,
+        11,
+        32,
+        97,
+        4,
+        94,
+        12,
+        32,
+        85,
+        3,
+        45,
+        129,
+        132,
+        56,
+        76,
+        54,
+        119,
+        3
+      ],
+      "markers": [
+        7,
+        12
+      ],
+      "raw_count": 26
+    },
+    {
+      "qid": "yes",
+      "qtype": 2,
+      "options": [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds"
+      ],
+      "ids": [
+        2,
+        109,
+        121,
+        32,
+        38,
+        138,
+        142,
+        33,
+        3,
+        4,
+        80,
+        32,
+        106,
+        10,
+        137,
+        134,
+        75,
+        107,
+        86,
+        4,
+        142,
+        32,
+        154,
+        10,
+        137,
+        134,
+        87,
+        3,
+        45,
+        129,
+        132,
+        56,
+        76,
+        54,
+        119,
+        3
+      ],
+      "markers": [
+        9,
+        19
+      ],
+      "raw_count": 36
+    }
+  ]
+}

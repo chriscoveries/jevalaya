@@ -1,0 +1,57 @@
+# jevalaya example config — copy to jevalaya.toml and point at your models.
+# Secrets are env-only: the token and API key names are configured here,
+# their values never are.
+
+[server]
+listen = "127.0.0.1:8767"
+auth_token_env = "JEVALAYA_TOKEN"
+max_body_bytes = 262144
+max_inflight = 4
+request_timeout_ms = 30000
+offline = false
+
+[policy]
+default_checkpoint = "english"
+auto_task_detection = false
+compare_backends = ["mlx", "jev"]
+
+# User-supplied model directories (HF cache paths or local dirs both work)
+[models]
+english = "/path/to/laya-english"
+multilingual = "/path/to/laya-multilingual"
+typed_decisions = "/path/to/laya-typed-decisions"
+
+[ane]
+enabled = true
+model = "/path/to/laya-multilingual-coreml-ane"
+max_tokens = 96
+alignment = 1
+preload = false
+
+[mlx]
+enabled = true
+python = "/path/to/laya-mlx/.venv/bin/python"
+max_loaded = 1
+preload = false
+# Optional socket sidecar fallback, never the v1 primary path.
+sidecar_fallback = false
+sidecar_socket = "/tmp/jevalaya-mlx.sock"
+
+[jev]
+enabled = true
+base_url = "https://api.typesafe.ai"
+predict_path = "/v1/systemone"
+api_key_env = "TYPESAFE_API_KEY"
+model = "jev-latest"
+request_timeout_ms = 25000
+retries = 2
+confidence_threshold = 0.75
+margin_threshold = 0.20
+target_confidence_threshold = 0.85
+
+[observability]
+sink = "jsonl:/var/tmp/jevalaya-events.jsonl"
+queue_capacity = 1024
+
+[feedback]
+sink = "jsonl:~/.jevalaya/feedback.jsonl"

@@ -1,0 +1,77 @@
+{
+  "config": "std",
+  "max_len": 512,
+  "head_max_len": 192,
+  "case": "en_score",
+  "state": "The package arrived late and damaged",
+  "questions": {
+    "level": {
+      "type": "score",
+      "instructions": "Rate urgency",
+      "criteria": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "level",
+      "qtype": 1,
+      "options": [
+        "level 0: low",
+        "level 1: medium",
+        "level 2: high"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        44,
+        144,
+        3,
+        4,
+        94,
+        11,
+        32,
+        97,
+        4,
+        94,
+        12,
+        32,
+        100,
+        4,
+        94,
+        23,
+        32,
+        85,
+        3,
+        45,
+        118,
+        58,
+        93,
+        57,
+        71,
+        3
+      ],
+      "markers": [
+        7,
+        12,
+        17
+      ],
+      "raw_count": 30
+    }
+  ]
+}
