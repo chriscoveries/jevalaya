@@ -341,7 +341,14 @@ impl Router {
         match kind {
             BackendKind::Ane => match dispatch(&backend, preq, plan.rendered.clone()).await {
                 Ok(r) => Ok(r),
-                Err(e @ (BackendError::Capacity(_) | BackendError::Shape(_))) => {
+                // Capacity/shape permit the one MLX retry (DESIGN.md);
+                // NotReady is the warming residency state — same single
+                // fail-over so a loading ANE never blocks the request.
+                Err(
+                    e @ (BackendError::Capacity(_)
+                    | BackendError::Shape(_)
+                    | BackendError::NotReady(_)),
+                ) => {
                     let mlx = self.backend(BackendKind::Mlx).filter(|_| avail.mlx);
                     match mlx {
                         Some(mlx) => {
@@ -355,8 +362,10 @@ impl Router {
                             plan.decision.fallback_from = Some(BackendKind::Ane);
                             plan.decision.fallback_reason = Some(e.stable_code().to_string());
                             plan.decision.reason = format!(
-                                "{}: ane dispatch failed, retried once on mlx",
-                                plan.decision.reason
+                                "{}: ane {} ({}), served by mlx",
+                                plan.decision.reason,
+                                e.stable_code(),
+                                e
                             );
                             Ok(r)
                         }

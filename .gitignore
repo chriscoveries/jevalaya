@@ -10,3 +10,8 @@ __pycache__/
 .jevalaya-local.toml
 # Local dev config carries machine paths — ship the example instead
 jevalaya.toml
+# Benchmark harness: local corpora, sweep results, and machine-path bench
+# config are measurement artifacts, not repo content
+tools/bench/datasets/
+tools/bench/results/
+tools/bench/jevalaya.bench.toml

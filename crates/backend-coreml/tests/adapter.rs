@@ -99,10 +99,41 @@ async fn live_ane_predict() {
         jevalaya_router_core::PromptEngine::ane_render(&engine, &state, &q).expect("ane render");
     assert!(rendered.ids.len() <= 96);
 
-    let out = backend
-        .predict(&request(questions), Some(&rendered))
+    // Residency contract: the first eligible predict on a cold backend
+    // kicks off the background load and returns a fast ane_warming
+    // NotReady — the request never blocks inside the 50–90 s cold load.
+    let req = request(questions.clone());
+    let t0 = std::time::Instant::now();
+    let err = backend
+        .predict(&req, Some(&rendered))
         .await
-        .expect("live ane predict");
+        .expect_err("cold ane must report warming, not block");
+    assert!(
+        matches!(&err, BackendError::NotReady(m) if m.contains("ane_warming")),
+        "expected ane_warming NotReady, got {err:?}"
+    );
+    assert!(
+        t0.elapsed().as_secs() < 10,
+        "ane_warming must return fast, took {:?}",
+        t0.elapsed()
+    );
+    assert!(backend.capabilities().detail.contains("warming"));
+
+    // Poll until the background load lands residency.
+    let mut out = None;
+    for _ in 0..90 {
+        match backend.predict(&req, Some(&rendered)).await {
+            Ok(r) => {
+                out = Some(r);
+                break;
+            }
+            Err(BackendError::NotReady(_)) => {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await
+            }
+            Err(e) => panic!("live ane predict failed: {e:?}"),
+        }
+    }
+    let out = out.expect("ane model never became resident");
     assert_eq!(out.model, "laya-rl-agent");
     let ans = &out.answers["q0"];
     assert_eq!(ans["type"], "noul");
