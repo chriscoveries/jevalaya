@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/router-core",
+    "crates/render",
+    "crates/backend-jev",
+    "crates/backend-mlx-pyo3",
+    "crates/jevalaya-server",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"

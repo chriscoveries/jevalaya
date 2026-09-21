@@ -1,0 +1,95 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "multilingual_zh",
+  "state": "发票被重复扣款，请退款。",
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "选择主题",
+      "criteria": [
+        "账单",
+        "退款",
+        "物流"
+      ]
+    }
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "账单",
+        "退款",
+        "物流"
+      ],
+      "ids": [
+        50281,
+        22122,
+        1953,
+        27,
+        209,
+        49037,
+        23825,
+        104,
+        34204,
+        27107,
+        235,
+        50282,
+        50284,
+        209,
+        29832,
+        101,
+        44006,
+        50284,
+        209,
+        11016,
+        211,
+        25715,
+        124,
+        50284,
+        209,
+        34389,
+        50039,
+        50282,
+        29918,
+        37769,
+        103,
+        41873,
+        34698,
+        7249,
+        224,
+        11827,
+        98,
+        25715,
+        124,
+        6238,
+        44673,
+        11016,
+        211,
+        25715,
+        124,
+        4340,
+        50282
+      ],
+      "markers": [
+        12,
+        17,
+        23
+      ],
+      "raw_count": 47
+    }
+  ]
+}

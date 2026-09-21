@@ -1,0 +1,12 @@
+# This Mac's global excludesFile ignores everything; re-include this repo's files.
+!*
+
+# Standard Rust/Python noise
+target/
+**/*.rs.bk
+.DS_Store
+__pycache__/
+*.pyc
+.jevalaya-local.toml
+# Local dev config carries machine paths — ship the example instead
+jevalaya.toml

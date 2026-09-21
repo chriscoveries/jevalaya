@@ -1,0 +1,35 @@
+[package]
+name = "jevalaya-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "jevalaya serve: Axum front end for the router-core decision table (T002). POST /predict + /route, GET /health + /ready, bearer auth, body cap, inflight cap, timeouts, JSONL events."
+
+[[bin]]
+name = "jevalaya"
+path = "src/main.rs"
+
+[features]
+default = ["mlx"]
+# The PyO3 bridge needs PYO3_PYTHON pointing at the laya-mlx venv at build
+# time (see backend-mlx-pyo3 header docs). --no-default-features builds a
+# no-MLX binary (Jev only) for hosts without the Python toolchain.
+mlx = ["dep:jevalaya-backend-mlx-pyo3"]
+
+[dependencies]
+jevalaya-router-core = { path = "../router-core" }
+jevalaya-backend-jev = { path = "../backend-jev" }
+jevalaya-backend-mlx-pyo3 = { path = "../backend-mlx-pyo3", optional = true }
+axum = "0.8"
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "sync"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+toml = "0.8"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.6", features = ["trace"] }
+
+[dev-dependencies]
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread"] }

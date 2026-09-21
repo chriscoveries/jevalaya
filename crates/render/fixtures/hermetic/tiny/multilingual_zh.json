@@ -1,0 +1,65 @@
+{
+  "config": "tiny",
+  "max_len": 128,
+  "head_max_len": 32,
+  "case": "multilingual_zh",
+  "state": "发票被重复扣款，请退款。",
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "选择主题",
+      "criteria": [
+        "账单",
+        "退款",
+        "物流"
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "账单",
+        "退款",
+        "物流"
+      ],
+      "ids": [
+        2,
+        69,
+        121,
+        32,
+        184,
+        3,
+        4,
+        182,
+        4,
+        183,
+        4,
+        180,
+        3,
+        179,
+        185,
+        181,
+        177,
+        3
+      ],
+      "markers": [
+        6,
+        8,
+        10
+      ],
+      "raw_count": 18
+    }
+  ]
+}

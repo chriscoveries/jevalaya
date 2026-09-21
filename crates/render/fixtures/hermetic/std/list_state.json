@@ -1,0 +1,81 @@
+{
+  "config": "std",
+  "max_len": 512,
+  "head_max_len": 192,
+  "case": "list_state",
+  "state": [
+    "line one",
+    {
+      "k": "v"
+    },
+    42
+  ],
+  "questions": {
+    "level": {
+      "type": "score",
+      "instructions": "Rate it",
+      "criteria": [
+        "bad",
+        "good"
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "level",
+      "qtype": 1,
+      "options": [
+        "level 0: bad",
+        "level 1: good"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        44,
+        91,
+        3,
+        4,
+        94,
+        11,
+        32,
+        61,
+        4,
+        94,
+        12,
+        32,
+        82,
+        3,
+        48,
+        95,
+        113,
+        6,
+        157,
+        92,
+        7,
+        5,
+        145,
+        9,
+        26,
+        50,
+        3
+      ],
+      "markers": [
+        7,
+        12
+      ],
+      "raw_count": 31
+    }
+  ]
+}

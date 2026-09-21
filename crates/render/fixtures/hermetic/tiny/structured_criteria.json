@@ -1,0 +1,155 @@
+{
+  "config": "tiny",
+  "max_len": 128,
+  "head_max_len": 32,
+  "case": "structured_criteria",
+  "state": {
+    "text": "你好",
+    "flag": false
+  },
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "Choose",
+      "criteria": {
+        "zero": 0,
+        "no": false,
+        "nested": {
+          "value": 3
+        },
+        "nothing": null,
+        "blank": ""
+      }
+    },
+    "level": {
+      "type": "score",
+      "instructions": "Level",
+      "criteria": [
+        "low",
+        {
+          "tier": 2
+        },
+        5
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "zero: 0",
+        "no: false",
+        "nested: {\"value\": 3}",
+        "nothing",
+        "blank"
+      ],
+      "ids": [
+        2,
+        69,
+        121,
+        32,
+        35,
+        3,
+        4,
+        155,
+        32,
+        11,
+        4,
+        106,
+        32,
+        80,
+        4,
+        105,
+        32,
+        157,
+        4,
+        108,
+        4,
+        65,
+        3,
+        157,
+        136,
+        7,
+        5,
+        178,
+        6,
+        5,
+        81,
+        7,
+        80,
+        158,
+        3
+      ],
+      "markers": [
+        6,
+        10,
+        14,
+        18,
+        20
+      ],
+      "raw_count": 35
+    },
+    {
+      "qid": "level",
+      "qtype": 1,
+      "options": [
+        "level 0: low",
+        "level 1: {\"tier\": 2}",
+        "level 2: 5"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        40,
+        3,
+        4,
+        94,
+        11,
+        32,
+        97,
+        4,
+        94,
+        12,
+        32,
+        157,
+        4,
+        94,
+        23,
+        32,
+        27,
+        3,
+        157,
+        136,
+        7,
+        5,
+        178,
+        6,
+        5,
+        81,
+        7,
+        80,
+        158,
+        3
+      ],
+      "markers": [
+        6,
+        11,
+        16
+      ],
+      "raw_count": 34
+    }
+  ]
+}

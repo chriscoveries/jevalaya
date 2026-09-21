@@ -1,0 +1,84 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "nonstring_instructions",
+  "state": "hello",
+  "questions": {
+    "t": {
+      "type": "noul",
+      "instructions": {
+        "task": "verify"
+      },
+      "criteria": {
+        "false": {
+          "reason": "no"
+        },
+        "true": {
+          "reason": "yes"
+        }
+      }
+    }
+  },
+  "items": [
+    {
+      "qid": "t",
+      "qtype": 2,
+      "options": [
+        "false: {\"reason\": \"no\"}",
+        "true: {\"reason\": \"yes\"}"
+      ],
+      "ids": [
+        50281,
+        79,
+        3941,
+        1953,
+        27,
+        17579,
+        14605,
+        1381,
+        346,
+        36302,
+        986,
+        50282,
+        50284,
+        3221,
+        27,
+        17579,
+        10752,
+        1381,
+        346,
+        2369,
+        986,
+        50284,
+        2032,
+        27,
+        17579,
+        10752,
+        1381,
+        346,
+        9820,
+        986,
+        50282,
+        25521,
+        50282
+      ],
+      "markers": [
+        12,
+        21
+      ],
+      "raw_count": 33
+    }
+  ]
+}

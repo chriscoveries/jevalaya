@@ -1,0 +1,80 @@
+{
+  "config": "tiny",
+  "max_len": 128,
+  "head_max_len": 32,
+  "case": "nonstring_instructions",
+  "state": "hello",
+  "questions": {
+    "t": {
+      "type": "noul",
+      "instructions": {
+        "task": "verify"
+      },
+      "criteria": {
+        "false": {
+          "reason": "no"
+        },
+        "true": {
+          "reason": "yes"
+        }
+      }
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "t",
+      "qtype": 2,
+      "options": [
+        "false: {\"reason\": \"no\"}",
+        "true: {\"reason\": \"yes\"}"
+      ],
+      "ids": [
+        2,
+        109,
+        121,
+        32,
+        157,
+        135,
+        7,
+        5,
+        147,
+        8,
+        3,
+        4,
+        80,
+        32,
+        157,
+        122,
+        7,
+        5,
+        106,
+        4,
+        142,
+        32,
+        157,
+        122,
+        7,
+        5,
+        154,
+        3,
+        84,
+        3
+      ],
+      "markers": [
+        11,
+        19
+      ],
+      "raw_count": 30
+    }
+  ]
+}

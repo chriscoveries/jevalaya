@@ -1,0 +1,66 @@
+{
+  "config": "tiny",
+  "max_len": 128,
+  "head_max_len": 32,
+  "case": "multilingual_hi",
+  "state": "मुझे धनवापसी चाहिए।",
+  "questions": {
+    "level": {
+      "type": "score",
+      "instructions": "प्राथमिकता",
+      "criteria": [
+        "कम",
+        "उच्च"
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "level",
+      "qtype": 1,
+      "options": [
+        "level 0: कम",
+        "level 1: उच्च"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        174,
+        3,
+        4,
+        94,
+        11,
+        32,
+        171,
+        4,
+        94,
+        12,
+        32,
+        170,
+        3,
+        175,
+        173,
+        172,
+        176,
+        3
+      ],
+      "markers": [
+        6,
+        11
+      ],
+      "raw_count": 22
+    }
+  ]
+}

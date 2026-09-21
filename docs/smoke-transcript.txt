@@ -1,0 +1,84 @@
+T018 wire-up smoke — 2026-09-21, devin-max
+==========================================
+
+Build:
+  PYO3_PYTHON=/Users/chrisd/PROJECTS/laya-mlx/.venv/bin/python cargo build --workspace
+  (pyo3 links the venv interpreter; laya_mlx imported in-process, torch/transformers
+   import is refused by the bridge guard)
+
+Serve (secrets env-only):
+  TYPESAFE_API_KEY=<infisical jev> JEVALAYA_TOKEN=dev-smoke \
+    ./target/debug/jevalaya serve --config jevalaya.toml
+
+  log:
+    INFO bearer auth via env JEVALAYA_TOKEN
+    INFO mlx backend up (pyo3 bridge, module laya_mlx)
+    INFO jev backend up (https://api.typesafe.ai/v1/systemone)
+    INFO configured backends: [Mlx, Jev]; built: [Jev, Mlx]
+    INFO routing events → /tmp/jevalaya-events.jsonl
+    INFO jevalaya listening on http://127.0.0.1:8767
+
+GET /health ->
+  {"ok": true, "model": "<laya-english snapshot>",
+   "backends": {"ane": null, "mlx": {"available": true, "detail": "pyo3 laya_mlx"},
+                "jev": {"available": true, "detail": "typesafe https://api.typesafe.ai/v1/systemone"}},
+   "available_backends": ["mlx", "jev"], "degraded": false}
+
+GET /ready -> {"ready": true, "available_backends": ["mlx", "jev"]}
+
+POST /predict, no Authorization -> 401
+  {"error": {"code": "unauthorized", "message": "missing or incorrect bearer token"}}
+
+POST /predict, missing `questions` -> 400
+  {"error": {"code": "invalid_request", "message": "invalid request: malformed body: missing field `questions` ..."}}
+
+POST /predict {"backend":"ane"} (no ANE adapter built) -> 409
+  {"error": {"code": "backend_unavailable", "message": "backend unavailable: ane"}}
+
+POST /predict — German state, single choice question, backend auto:
+  state="Mein Konto wurde zweimal belastet und ich möchte eine Rückerstattung für die Bestellung"
+  questions.topic = choice [abrechnung|versand|produkt]
+  -> 200, ~1.5s cold (multilingual weights load), then ~40-80ms warm
+  answers.topic.choice = "abrechnung" (p 0.996)
+  routing: {checkpoint: "multilingual", backend: "mlx",
+            reason: "ane_unavailable: Latin script but language looks like Some(\"de\"), not English",
+            token_count: 35, ane_eligible: true, execution_token_count: 35,
+            confidence: 0.974, margin: 0.992, degraded: false}
+  — every ANE content gate passed (eligible), no adapter to serve it → MLX, honest reason.
+
+POST /predict — English, 2 questions (choice + noul), auto:
+  -> routing.checkpoint "english", reason "not_multilingual: English Latin text: escalated to jev",
+     backend "jev", escalated true, jev_trigger "low_confidence"
+     (local conf < 0.75 → real TypeSafe call answered; degraded false)
+  token_count 52 = max per-question raw; execution_token_count 52.
+
+POST /predict — long English (40x repeated sentence, 453 tokens), auto -> mlx
+  reason "not_multilingual", token_count 453, execution_token_count 453, latency ~320ms.
+
+POST /predict — backend "jev" (list criteria!):
+  -> 200 from real TypeSafe: model "jev-1.13.0", answers.topic.choice "billing",
+     confidence 1.0, usage {input 308, output 38}, latency 811ms,
+     routing {backend: "jev", checkpoint: null, token_count: null,
+              reason: "explicit_backend: backend=jev"}
+  — adapter upgraded list criteria to {label: null} (provider 422s on lists).
+
+POST /route — German single-question body:
+  -> 200 RouteDecision only: {backend: "mlx", checkpoint: "english",
+     reason: "not_multilingual: English Latin text", token_count: 24,
+     latency_ms: null} — no inference dispatched.
+
+POST /predict — compare ["mlx","jev"]:
+  -> primary escalated to jev; compare.mlx = laya-rl-agent answer,
+     compare.jev = jev-1.13.0 answer — both real, per-backend RouteDecisions.
+
+Observability: one JSONL line per request in /tmp/jevalaya-events.jsonl —
+  ts, request_id, backend, checkpoint, reason prefix, token_count,
+  confidence, margin, latency_ms, fallback, escalated, degraded, cost,
+  available_backends, status. No state/questions/credentials.
+
+Verified gaps remaining:
+  - ANE adapter (T004) absent: ane_eligible computes honestly, dispatch skips.
+  - Jev 502 -> local-retain path exercised earlier run (upstream 422 before
+    the criteria fix): escalated true, escalation_error "upstream",
+    backend stayed mlx, degraded true — the safe-degradation contract held
+    against a real provider failure.

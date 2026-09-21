@@ -1,0 +1,30 @@
+[package]
+name = "jevalaya-backend-coreml"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Native CoreML/ANE backend (T004). Loads one fixed-shape laya-coreml-ane bundle (B1/L96/K32 fp16), gathers embeddings + builds additive masks on host, runs the ANE encoder graph via objc2-core-ml, then the fp32 action head + laya answer decode on CPU. Target-gated to macOS aarch64; other platforms get an unavailable stub behind the same trait."
+
+[dependencies]
+async-trait = "0.1"
+jevalaya-router-core = { path = "../router-core" }
+jevalaya-render = { path = "../render" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+half = "2"
+libm = "0.2"
+memmap2 = "0.9"
+sha2 = "0.10"
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+objc2 = "=0.6.4"
+objc2-foundation = { version = "=0.3.2", features = [
+    "NSString", "NSArray", "NSDictionary", "NSNumber", "NSURL", "NSError",
+    "NSObjCRuntime",
+] }
+objc2-core-ml = { version = "=0.3.2", features = [
+    "MLModel", "MLModelConfiguration", "MLModelDescription", "MLMultiArray",
+    "MLMultiArrayConstraint", "MLFeatureValue", "MLFeatureDescription",
+    "MLDictionaryFeatureProvider", "MLFeatureProvider",
+] }

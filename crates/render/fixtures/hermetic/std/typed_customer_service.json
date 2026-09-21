@@ -1,0 +1,331 @@
+{
+  "config": "std",
+  "max_len": 512,
+  "head_max_len": 192,
+  "case": "typed_customer_service",
+  "state": {
+    "message": "Where is my order?",
+    "orders": [
+      {
+        "id": 7
+      }
+    ]
+  },
+  "questions": {
+    "action": {
+      "type": "choice",
+      "instructions": "Pick the action",
+      "criteria": [
+        "reply",
+        "escalate",
+        "refund"
+      ]
+    },
+    "category": {
+      "type": "choice",
+      "instructions": "Pick the category",
+      "criteria": [
+        "shipping",
+        "billing"
+      ]
+    },
+    "churn_risk": {
+      "type": "score",
+      "instructions": "Churn risk",
+      "criteria": [
+        "low",
+        "high"
+      ]
+    },
+    "needs_human": {
+      "type": "noul",
+      "instructions": "Needs a human?"
+    },
+    "urgency": {
+      "type": "score",
+      "instructions": "Urgency",
+      "criteria": [
+        "low",
+        "mid",
+        "high"
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "action",
+      "qtype": 0,
+      "options": [
+        "reply",
+        "escalate",
+        "refund"
+      ],
+      "ids": [
+        2,
+        69,
+        121,
+        32,
+        43,
+        137,
+        53,
+        3,
+        4,
+        124,
+        4,
+        77,
+        4,
+        123,
+        3,
+        157,
+        101,
+        7,
+        5,
+        47,
+        90,
+        103,
+        116,
+        34,
+        5,
+        117,
+        7,
+        49,
+        89,
+        7,
+        29,
+        159,
+        3
+      ],
+      "markers": [
+        8,
+        10,
+        12
+      ],
+      "raw_count": 33
+    },
+    {
+      "qid": "category",
+      "qtype": 0,
+      "options": [
+        "shipping",
+        "billing"
+      ],
+      "ids": [
+        2,
+        69,
+        121,
+        32,
+        43,
+        137,
+        67,
+        3,
+        4,
+        130,
+        4,
+        64,
+        3,
+        157,
+        101,
+        7,
+        5,
+        47,
+        90,
+        103,
+        116,
+        34,
+        5,
+        117,
+        7,
+        49,
+        89,
+        7,
+        29,
+        159,
+        3
+      ],
+      "markers": [
+        8,
+        10
+      ],
+      "raw_count": 31
+    },
+    {
+      "qid": "churn_risk",
+      "qtype": 1,
+      "options": [
+        "level 0: low",
+        "level 1: high"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        36,
+        126,
+        3,
+        4,
+        94,
+        11,
+        32,
+        97,
+        4,
+        94,
+        12,
+        32,
+        85,
+        3,
+        157,
+        101,
+        7,
+        5,
+        47,
+        90,
+        103,
+        116,
+        34,
+        5,
+        117,
+        7,
+        49,
+        89,
+        7,
+        29,
+        159,
+        3
+      ],
+      "markers": [
+        7,
+        12
+      ],
+      "raw_count": 36
+    },
+    {
+      "qid": "needs_human",
+      "qtype": 2,
+      "options": [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds"
+      ],
+      "ids": [
+        2,
+        109,
+        121,
+        32,
+        42,
+        51,
+        88,
+        33,
+        3,
+        4,
+        80,
+        32,
+        106,
+        10,
+        137,
+        134,
+        75,
+        107,
+        86,
+        4,
+        142,
+        32,
+        154,
+        10,
+        137,
+        134,
+        87,
+        3,
+        157,
+        101,
+        7,
+        5,
+        47,
+        90,
+        103,
+        116,
+        34,
+        5,
+        117,
+        7,
+        49,
+        89,
+        7,
+        29,
+        159,
+        3
+      ],
+      "markers": [
+        9,
+        19
+      ],
+      "raw_count": 46
+    },
+    {
+      "qid": "urgency",
+      "qtype": 1,
+      "options": [
+        "level 0: low",
+        "level 1: mid",
+        "level 2: high"
+      ],
+      "ids": [
+        2,
+        128,
+        121,
+        32,
+        46,
+        3,
+        4,
+        94,
+        11,
+        32,
+        97,
+        4,
+        94,
+        12,
+        32,
+        102,
+        4,
+        94,
+        23,
+        32,
+        85,
+        3,
+        157,
+        101,
+        7,
+        5,
+        47,
+        90,
+        103,
+        116,
+        34,
+        5,
+        117,
+        7,
+        49,
+        89,
+        7,
+        29,
+        159,
+        3
+      ],
+      "markers": [
+        6,
+        11,
+        16
+      ],
+      "raw_count": 40
+    }
+  ]
+}

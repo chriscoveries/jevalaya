@@ -1,0 +1,73 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "mask_injection",
+  "state": "[MASK] hello [MASK]",
+  "questions": {
+    "x": {
+      "type": "noul",
+      "instructions": "[MASK] true?"
+    }
+  },
+  "items": [
+    {
+      "qid": "x",
+      "qtype": 2,
+      "options": [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds"
+      ],
+      "ids": [
+        50281,
+        79,
+        3941,
+        1953,
+        27,
+        50275,
+        5672,
+        32,
+        50282,
+        50284,
+        3221,
+        27,
+        642,
+        13,
+        253,
+        3908,
+        1057,
+        417,
+        2186,
+        50284,
+        2032,
+        27,
+        4754,
+        13,
+        253,
+        3908,
+        6556,
+        50282,
+        50276,
+        25521,
+        50276,
+        50282
+      ],
+      "markers": [
+        9,
+        19
+      ],
+      "raw_count": 32
+    }
+  ]
+}

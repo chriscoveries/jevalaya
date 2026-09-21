@@ -1,0 +1,13 @@
+[package]
+name = "jevalaya-backend-mlx-pyo3"
+version = "0.1.0"
+edition = "2021"
+description = "MLX backend via in-process PyO3 bridge reusing laya-mlx (T005). Thin adapter: interpreter init, Router construction, predict call, normalized payload out. No socket, no second renderer. Native mlx-rs may replace this behind the same trait."
+license = "Apache-2.0"
+
+[dependencies]
+async-trait = "0.1"
+jevalaya-router-core = { path = "../router-core" }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+pyo3 = { version = "=0.29.2", features = ["auto-initialize"] }

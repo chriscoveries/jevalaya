@@ -1,0 +1,72 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "en_choice_single",
+  "state": "I was charged twice and want a refund",
+  "questions": {
+    "topic": {
+      "type": "choice",
+      "instructions": "Choose the topic",
+      "criteria": [
+        "billing",
+        "refund",
+        "shipping"
+      ]
+    }
+  },
+  "items": [
+    {
+      "qid": "topic",
+      "qtype": 0,
+      "options": [
+        "billing",
+        "refund",
+        "shipping"
+      ],
+      "ids": [
+        50281,
+        22122,
+        1953,
+        27,
+        28890,
+        253,
+        9400,
+        50282,
+        50284,
+        33484,
+        50284,
+        23005,
+        50284,
+        15076,
+        50282,
+        42,
+        369,
+        6636,
+        7019,
+        285,
+        971,
+        247,
+        23005,
+        50282
+      ],
+      "markers": [
+        8,
+        10,
+        12
+      ],
+      "raw_count": 24
+    }
+  ]
+}

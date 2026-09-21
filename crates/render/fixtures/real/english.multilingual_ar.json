@@ -1,0 +1,101 @@
+{
+  "model": "english",
+  "snapshot": "/Users/chrisd/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/20aed815fc6acde75733882e7ec0e3f28aeb9717",
+  "max_len": 512,
+  "head_max_len": 192,
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 50281,
+    "sep_token_id": 50282,
+    "pad_token_id": 50283,
+    "mask_token_id": 50284
+  },
+  "case": "multilingual_ar",
+  "state": "تم تحصيل رسوم مضاعفة من حسابي",
+  "questions": {
+    "ok": {
+      "type": "noul",
+      "instructions": "هل هذا صحيح؟"
+    }
+  },
+  "items": [
+    {
+      "qid": "ok",
+      "qtype": 2,
+      "options": [
+        "false: no, the statement does not hold",
+        "true: yes, the statement holds"
+      ],
+      "ids": [
+        50281,
+        79,
+        3941,
+        1953,
+        27,
+        29802,
+        4467,
+        29802,
+        31602,
+        3142,
+        4954,
+        115,
+        21931,
+        6463,
+        21931,
+        148,
+        242,
+        50282,
+        50284,
+        3221,
+        27,
+        642,
+        13,
+        253,
+        3908,
+        1057,
+        417,
+        2186,
+        50284,
+        2032,
+        27,
+        4754,
+        13,
+        253,
+        3908,
+        6556,
+        50282,
+        8181,
+        5843,
+        20817,
+        21931,
+        30265,
+        6463,
+        4467,
+        39410,
+        14585,
+        6534,
+        5843,
+        13504,
+        35429,
+        10714,
+        119,
+        11912,
+        12458,
+        31461,
+        40913,
+        14585,
+        47931,
+        6463,
+        50282
+      ],
+      "markers": [
+        18,
+        28
+      ],
+      "raw_count": 60
+    }
+  ]
+}

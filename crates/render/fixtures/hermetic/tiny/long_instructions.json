@@ -1,0 +1,82 @@
+{
+  "config": "tiny",
+  "max_len": 128,
+  "head_max_len": 32,
+  "case": "long_instructions",
+  "state": "short state",
+  "questions": {
+    "q": {
+      "type": "choice",
+      "instructions": "word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word",
+      "criteria": [
+        "a",
+        "b"
+      ]
+    }
+  },
+  "specials": {
+    "cls_token": "[CLS]",
+    "sep_token": "[SEP]",
+    "pad_token": "[PAD]",
+    "mask_token": "[MASK]",
+    "cls_token_id": 2,
+    "sep_token_id": 3,
+    "pad_token_id": 0,
+    "mask_token_id": 4
+  },
+  "items": [
+    {
+      "qid": "q",
+      "qtype": 0,
+      "options": [
+        "a",
+        "b"
+      ],
+      "ids": [
+        2,
+        69,
+        121,
+        32,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        151,
+        3,
+        4,
+        51,
+        4,
+        60,
+        3,
+        131,
+        133,
+        3
+      ],
+      "markers": [
+        30,
+        32
+      ],
+      "raw_count": 38
+    }
+  ]
+}
