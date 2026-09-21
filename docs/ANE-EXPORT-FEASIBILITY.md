@@ -79,6 +79,46 @@ For the first English trial, use a separately configured single-family test inst
 
 For one longer multilingual bundle, set the policy length from its validated manifest (or clamp explicit `max_tokens` to that length) instead of leaving the 96 default or permitting a larger override. Add manifest/policy consistency checks. For typed workflows, T023's per-question execution is a separate prerequisite for full-request ANE coverage; aggregate latency grows with question count. An export is not permission to split or truncate state.
 
+## Loading a second bundle: concrete extension
+
+Proposed config (design only; not accepted by the current parser):
+
+```toml
+[ane]
+enabled = true
+max_resident = 1
+
+[[ane.bundles]]
+id = "english-96"
+checkpoint = "english"
+model = "/models/laya-english-ane-l96"
+preload = true
+
+[[ane.bundles]]
+id = "multilingual-192"
+checkpoint = "multilingual"
+model = "/models/laya-multilingual-ane-l192"
+preload = false
+```
+
+Keep the old `[ane].model` shorthand for one multilingual bundle; reject simultaneous shorthand and list syntax. Length, option capacity, precision, source revision/hash and tokenizer/config fingerprints come from each validated bundle, not from the filename or a user-invented shape. Config binds a bundle to a checkpoint family and must be checked against its declared source metadata; custom models need an explicit, validated family mapping. An optional per-bundle token ceiling may lower but never enlarge its actual shape. Bundle IDs are unique and stable across snapshots.
+
+| Component | Required extension |
+| --- | --- |
+| Server config/build | Parse a bundle list; validate each descriptor independently and expose per-bundle failures. Preserve all-valid or partially-available service boot behavior. |
+| `backend-coreml` | Keep `AneBackend` as the single-bundle implementation; introduce an `AnePool` implementing the existing backend trait and dispatching by selected immutable bundle ID. Constructing descriptors/tokenizers need not load all Core ML weights. |
+| `router-core` capabilities | Replace one ANE capability with entries keyed by `(checkpoint, source identity, fixed length)`, each including K, health, residency and bundle ID. Multiple source revisions of one family require a configured active revision; do not silently switch trained models to find a fitting bucket. |
+| Prompt engine | Replace the single `Option<AneEngine>` with per-bundle metadata or shared entries indexed by identical tokenizer/render-config fingerprints. Render/count using the selected family's candidate; never reuse a multilingual token count for English. |
+| RoutePlan/dispatch | Carry bundle ID, profile generation and prepared IDs. Among healthy, validated candidates of the chosen family/revision that fit raw/aligned length and K, select the smallest fitting L; apply load/deadline policy before committing. RouteDecision reports bundle ID, actual shape and source identity. |
+| Health/reload | Health is per bundle. ANE overall is available when any profile can serve, but a particular request can still lack a compatible profile. Reload builds a validated registry and swaps it atomically; in-flight requests retain their registry generation/handles until completion. |
+| Lifecycle | Pool-wide load deduplication, bounded ANE execution, residency accounting and in-flight leases prevent duplicate loads or eviction of active models. `unload(id)`/preload list target profiles; `unload(ane)` targets the pool. |
+
+With `max_resident=1`, the second bundle is registered and can be lazy-loaded after the first is safely released; it is **not** a second simultaneously warm model. Preload sets exceeding the cap are rejected. The shortest fitting model being cold must not silently force a multi-second load inside a sub-100ms request: prefer an already resident compatible larger bucket or the existing MLX path when the request's deadline/load policy requires it, recording `ane_profile_cold`. Use a process-wide residency gate and wait for actual native prediction completion before freeing a lease; cancelling an HTTP waiter does not prove a blocking Core ML call stopped.
+
+To keep two families warm, explicitly raise `max_resident` to 2 after measuring memory pressure and host embedding mappings. This changes the original one-ANE-engine lifecycle invariant and must be adopted deliberately; the configuration above keeps it. K and L remain independent constraints, and there remains one logical `ane` backend in compare mode rather than presenting length buckets as independent models.
+
+Fallback must retain the same checkpoint and its selected source identity. A failing English ANE profile retries English MLX where compatible, never the previously hardcoded multilingual path. A shape failure can disable just that profile; resource-pressure cooldown may be device-wide. Logs distinguish `ane_profile_missing`, `ane_profile_unhealthy`, `ane_profile_cold`, `token_count_over_limit`, and `option_count_over_limit` so coverage gaps can be measured accurately.
+
 ## Promotion gates and sequence
 
 1. Reproduce English L96 first. Check original source SHA, tokenizer IDs, all three output types, calibration/action probabilities, option counts and mask injection. Run original-vs-export parity and the Rust host against the Python ANE runtime on identical prepared inputs.

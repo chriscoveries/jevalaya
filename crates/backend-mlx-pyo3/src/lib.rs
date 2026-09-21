@@ -121,11 +121,15 @@ impl MlxBridge {
             .map_err(|e| BackendError::InvalidResponse(format!("questions not JSON: {e}")))?;
         let name = checkpoint.as_str().to_string();
         let started = Instant::now();
+        // Lock order is Mutex-then-GIL everywhere: a caller waiting on the
+        // bridge mutex must never already hold the GIL, or it deadlocks
+        // against an in-flight call that released the GIL inside Python
+        // (tokenizers/mlx SaveThread) and needs it back to return.
+        let router = self
+            .router
+            .lock()
+            .map_err(|_| BackendError::Inference("bridge mutex poisoned".to_string()))?;
         let out_json = Python::attach(|py| -> PyResult<String> {
-            let router = self
-                .router
-                .lock()
-                .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("bridge mutex poisoned"))?;
             let json_mod = PyModule::import(py, "json")?;
             let state_obj = json_mod.call_method1("loads", (state_json,))?;
             let questions_obj = json_mod.call_method1("loads", (questions_json,))?;
@@ -191,11 +195,12 @@ impl PredictBackend for MlxBridge {
             .iter()
             .map(|c| c.as_str().to_string())
             .collect();
+        // Mutex before GIL — see predict_json.
+        let router = self
+            .router
+            .lock()
+            .map_err(|_| BackendError::Inference("bridge mutex".to_string()))?;
         Python::attach(|py| -> PyResult<()> {
-            let router = self
-                .router
-                .lock()
-                .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("bridge mutex"))?;
             if names.is_empty() {
                 router.call_method0(py, "preload")?;
             } else {
@@ -208,11 +213,12 @@ impl PredictBackend for MlxBridge {
     }
 
     async fn unload(&self, target: UnloadTarget) -> Result<(), BackendError> {
+        // Mutex before GIL — see predict_json.
+        let router = self
+            .router
+            .lock()
+            .map_err(|_| BackendError::Inference("bridge mutex".to_string()))?;
         Python::attach(|py| -> PyResult<()> {
-            let router = self
-                .router
-                .lock()
-                .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("bridge mutex"))?;
             match target {
                 UnloadTarget::All => {
                     router.call_method0(py, "unload")?;
@@ -247,6 +253,39 @@ mod tests {
         assert_eq!(Checkpoint::Multilingual.as_str(), "multilingual");
         assert_eq!(Checkpoint::TypedDecisions.as_str(), "typed-decisions");
         assert_eq!(MlxConfig::default().module, "laya_mlx");
+    }
+
+    /// Regression for the T021 concurrency wedge: `Mutex<Py<PyAny>>` +
+    /// `Python::attach` must lock Mutex BEFORE the GIL. `time.sleep`
+    /// releases the GIL inside the call (same as the tokenizers/mlx
+    /// SaveThread path), so with the old attach-then-lock order a second
+    /// caller held the GIL while waiting on the Mutex — ABBA deadlock
+    /// against the first caller's RestoreThread. With Mutex-first order
+    /// a waiter holds nothing the sleeper needs; both complete.
+    #[test]
+    fn mutex_before_gil_concurrent_calls_complete() {
+        use std::sync::{mpsc, Arc};
+        let time_mod: Arc<Mutex<Py<PyAny>>> = Arc::new(Mutex::new(
+            Python::attach(|py| PyModule::import(py, "time").unwrap().into()),
+        ));
+        let call = |m: &Mutex<Py<PyAny>>, secs: f64| {
+            let guard = m.lock().unwrap(); // Mutex first — the fix
+            Python::attach(|py| guard.call_method1(py, "sleep", (secs,))).unwrap();
+        };
+        let (tx, rx) = mpsc::channel();
+        for (secs, delay_ms) in [(0.5, 0u64), (0.2, 100)] {
+            let m = time_mod.clone();
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                call(&m, secs);
+                tx.send(()).unwrap();
+            });
+        }
+        for _ in 0..2 {
+            rx.recv_timeout(std::time::Duration::from_secs(20))
+                .expect("deadlock: concurrent Mutex+GIL call did not finish");
+        }
     }
 
     /// Live bridge test: real laya-mlx through the embedded interpreter.

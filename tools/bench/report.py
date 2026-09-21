@@ -22,6 +22,48 @@ def pct(rows):
     return {"n": len(xs), "p50": round(q(0.50), 1), "p95": round(q(0.95), 1), "p99": round(q(0.99), 1)}
 
 
+def threshold_sweep(good):
+    """Calibration curve: esc_rate/esc_acc/keep_acc over margin × conf grids.
+
+    Rows: margin-alone gates, conf-alone gates, and OR combos — the cost
+    (esc_rate ~ Jev volume) vs catch (keep_acc) trade the user decides on.
+    """
+
+    def num(key):
+        return lambda r: r[key] if isinstance(r[key], (int, float)) else None
+
+    def stats(pred):
+        esc = [r for r in good if pred(r)]
+        kept = [r for r in good if not pred(r)]
+        return {
+            "esc_rate": round(len(esc) / max(1, len(good)), 4),
+            "esc_acc": round(sum(1 for r in esc if r["correct"]) / max(1, len(esc)), 4),
+            "keep_acc": round(sum(1 for r in kept if r["correct"]) / max(1, len(kept)), 4),
+        }
+
+    table = []
+    for m in (0.10, 0.15, 0.20, 0.30):
+        table.append(
+            {"gate": f"margin<{m}", **stats(lambda r, m=m: (num("margin")(r) or 1.0) < m)}
+        )
+    for c in (0.60, 0.70, 0.75, 0.80):
+        table.append(
+            {"gate": f"conf<{c}", **stats(lambda r, c=c: (num("confidence")(r) or 1.0) < c)}
+        )
+    for m in (0.20, 0.30):
+        for c in (0.70, 0.75):
+            table.append(
+                {
+                    "gate": f"margin<{m} OR conf<{c}",
+                    **stats(
+                        lambda r, m=m, c=c: (num("margin")(r) or 1.0) < m
+                        or (num("confidence")(r) or 1.0) < c
+                    ),
+                }
+            )
+    return table
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("results")
@@ -90,7 +132,12 @@ def main():
         f"- latency client ms: {summary['latency_client_ms']}",
         f"- latency server ms: {summary['latency_server_ms']}",
         f"- confidence mean={summary['confidence_mean']} margin mean={summary['margin_mean']}",
+        "- threshold sweep (gate | esc_rate | esc_acc | keep_acc):",
     ]
+    for row in summary["threshold_sweep"]:
+        lines.append(
+            f"  - {row['gate']} | {row['esc_rate']:.4f} | {row['esc_acc']:.4f} | {row['keep_acc']:.4f}"
+        )
     print("\n".join(lines))
     if args.json:
         json.dump(summary, open(args.json, "w"), indent=2)

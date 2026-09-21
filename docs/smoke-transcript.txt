@@ -134,3 +134,34 @@ Tests: router mock test ane_warming_retries_once_on_mlx (22 router tests
 green); live_ane_predict now asserts cold predict returns ane_warming
 in <10 s, capabilities detail reports "; warming", then polls to a real
 resident answer (72 ms). Workspace: 66 tests green.
+
+=== T021: P0 concurrency wedge — root cause + fix ===
+
+Repro: 2 concurrent /predict -> both 504 at 30 s; every later request
+504s; restart required. `sample` on the wedged process showed the real
+mechanism — an ABBA deadlock, NOT an orphaned-task queue:
+
+  Thread A: MlxBridge::predict_json holds Mutex<Py<PyAny>>, inside
+    Python the tokenizers trampoline SaveThread'd the GIL, parked in
+    take_gil/PyEval_RestoreThread waiting to re-acquire it.
+  Thread B: predict_json did Python::attach first (got the freed GIL),
+    then parked on the bridge Mutex A holds.
+  Thread C: parked in PyGILState_Ensure.
+
+A waits for the GIL B holds; B waits for the Mutex A holds. Permanent.
+
+Fix (backend-mlx-pyo3): acquire the bridge Mutex BEFORE Python::attach
+in predict_json/preload/unload — Mutex-outer/GIL-inner everywhere, so a
+mutex waiter never holds the GIL and the in-flight call can always
+restore it. Serialization (one resident model) is unchanged.
+
+Also hardened backend-coreml: catch_unwind around the background ANE
+load so a panic can't latch `loading` forever (same wedge shape).
+
+Verify — same server, ramp 1->2->4->8 concurrent /predict:
+  N=1: 200 | N=2: 200 200 (was 504 504) | N=4: 4x200 |
+  N=8: 4x200 + 4x429 (max_inflight busy rejection per DESIGN)
+Post-ramp /health ok; sequential /predict 169 ms. 67 tests green incl.
+new mutex_before_gil_concurrent_calls_complete (time.sleep releases the
+GIL like tokenizers does — same ABBA structure, would deadlock on the
+old order).

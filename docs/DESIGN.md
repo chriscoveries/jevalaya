@@ -530,6 +530,104 @@ Service writes append one complete JSON record per line with serialized access t
 
 Optionally enable `POST /feedback` to validate and append the same record, using the prediction endpoint's bearer authentication and body limit. Return `201 {"ok":true}` only after the append succeeds; invalid records return 400 and sink failures return 503. An unknown request id may still be recorded because routing logs can rotate. When disabled, the endpoint returns 404. Feedback write failures do not change prediction results. The service never inserts prompt state or credentials into feedback; `expected` and `notes` contain only what the consumer supplies.
 
+## Chunked inference strategy
+
+Status: proposed, offline/shadow experiment for T024; not a relaxation of the production routing rules above. Fixed-length ANE calls have no continuation/KV state: repeating a question on several slices and aggregating is a new predictor, not equivalent whole-context inference. Chunking must not silently turn an over-limit request into ordinary `ane_eligible=true` or substitute an English/typed request into the multilingual model. Family-specific artifacts and routing capabilities are a separate prerequisite; see [ANE export feasibility](ANE-EXPORT-FEASIBILITY.md).
+
+### Recommendation and ranked options
+
+1. Keep the whole state on a compatible MLX checkpoint, or a validated longer ANE profile when available. This is the correctness baseline and the preferred automatic route; a larger shape preserves cross-section attention that voting cannot recover.
+2. Measure non-overlapping token windows with the unchanged question as the simplest baseline: choice majority, score mean, noul any-hit. These are experimental hypotheses, not generally valid semantics. Then compare sentence/paragraph packing within the same token budget; this is the first production candidate for explicitly declared local-evidence tasks.
+3. Add modest overlap (start with 25% of the state window) only if boundary-error reduction pays for extra calls. Combine with abstention and whole-context escalation, rather than forcing every document into a voted answer.
+4. Test confidence/margin-weighted pooling, rank fusion, and head/tail weighting as ablations after the unweighted baseline. They add assumptions that must earn their complexity on held-out labels.
+5. Leave hierarchical meta-questions last. They change the task twice, cost another call, and cannot restore discarded evidence.
+
+The reported service baseline is roughly 77 ms per warm serial ANE call, not a new measurement in this design. Two/four chunks therefore spend roughly 154/308 ms in backend work alone before routing or escalation. Chunking is not a way to meet the current sub-100 ms common-path target on those timings. Its plausible value is a measured energy/resource tradeoff or a disagreement signal; neither is established by making all slices fit. Record actual elapsed latency, not `k × single-call p95` presented as a measured percentile.
+
+### Geometry and exact prompt budget
+
+Let `L` be the selected bundle's fixed length, `a` its alignment, `P` the complete canonical question prefix length, and `K` the number of option markers. The state allowance is `B = a * floor(L / a) - P - 1`, reserving the final separator. At L96/a1, `B = 95 - P`; a fixed 60-token state window only fits when P <= 35. Build P with the bundle tokenizer and the existing option/head caps, not a special shortened question. Reject `B <= 0`, excess K, lost markers, or any fully re-rendered chunk whose aligned count exceeds L. Do not truncate options/instructions further to manufacture capacity.
+
+- Naive windows: contiguous, complete coverage in original order. Compute offsets on the canonical mask-sanitized state text, retaining an original-text mapping if offsets are exposed. Use tokenizer offsets to choose valid text boundaries, then tokenize each actual chunk again; decoding an arbitrary BPE slice and re-encoding is not guaranteed to preserve ids or length. Verify exact ids/masks/markers and zero backend truncation. Preserve the original full state for any later escalation.
+- Sentence/paragraph packing: greedily pack whole spans up to B. Split an oversized span at a safe text boundary and flag it. Boundary detection is a cheap language-dependent heuristic, not a guarantee against splitting negation, pronouns, or linked facts. Compare at matched call budgets and report when packing increases k.
+- Sliding windows: stride `B - overlap`, with `0 <= overlap < B`. Cover the tail, avoid identical duplicate windows, and record source offsets. Overlap repeats evidence; votes are correlated and must not be interpreted as independent witnesses. Use unique-source-coverage weights as an ablation, not a claim that correlation has been eliminated.
+- Head/tail bias: either weight first/last windows while still examining all spans, or explicitly call the operation evidence selection when middle spans are omitted. It can help position-biased tasks but has no generic justification for arbitrary state. Keep it off by default and test evidence placed only in the middle.
+- Structured state: do not chop serialized JSON and assume fragments retain their key/path semantics. Start with string state. A later generic record-aware adapter may repeat necessary field/path context, charging those tokens against B and requiring caller-declared independent records; nested relational state otherwise goes whole-context. Never add consumer-specific field names to the router.
+
+The first experiment uses one question. Supporting several questions requires separate head budgets and normally `sum(k_q)` calls, not k calls shared across different heads; splitting questions also remains an explicit strategy change. Pin checkpoint, tokenizer, bundle, policy/config generation, and question/option order across all calls.
+
+### Aggregation semantics by question type
+
+The source contract matters: `laya_mlx/agent.py` returns choice probabilities, score as `sum(level_index * p_level)`, and noul as `p(true)`; its `action.act_probability` is a separately learned head. None of those types specifies how facts across documents compose.
+
+| Type | First baselines | Conditions and failure modes |
+| --- | --- | --- |
+| choice | Hard majority; uniform mean probability vector with argmax | Plausible for a declared document-level topic-vote task; a single decisive span can be outvoted by irrelevant spans. Ties abstain. A confidence-weighted sum can amplify confidently irrelevant chunks. |
+| score | Mean per-chunk score; weighted mean of level distributions | A mean is appropriate only when the requested quantity really decomposes into independent, equally weighted units, or caller-defined weights. Unequal chunks and ordinal/global rubrics do not automatically satisfy that assumption. Counts, maxima, totals, and overall quality are different operations. |
+| noul | Any positive chunk / max p(true); compare mean p(true) separately | Any-hit applies only to an explicitly existential predicate with self-contained evidence. It is wrong for universal conditions, absence, consistency, or document-wide truth. Mean probability is not an existential probability either. |
+
+For choice/score, retain each `p_i` in the same label order and test pooled `p_bar = sum(w_i * p_i) / sum(w_i)`, requiring finite nonnegative weights with positive total; an all-zero weight set abstains. Uniform weights are the baseline. Margin/entropy-confidence weights are candidates, not calibrated correctness weights; compare with novelty/length weights only where the task's unit of evidence warrants them. Reciprocal-rank fusion `R_j = sum(w_i / (c + rank_i(j)))`, with fixed positive c, tests reliance on ordering instead of probability magnitudes, but loses uncertainty information and still rewards repeated irrelevant evidence. It is lower priority than simple pooling plus abstention.
+
+For existential noul, declare the per-chunk positive threshold and test document-level false positives as k grows. Even under an illustrative independence assumption, per-chunk false-positive rate alpha yields document false-positive rate `1 - (1 - alpha)^k`; actual overlapping windows are dependent. Neither noisy-OR nor multiplied probabilities is justified without a dependence/calibration model. A negative answer requires full coverage and adequate evidence detection; “no slice voted true” is not proof of absence. Early stopping is allowed only for an explicitly validated existential-witness policy, never merely because the current majority appears stable.
+
+### Disagreement as an escalation signal
+
+Measure evidence sensitivity separately from each call's uncertainty. For normalized nonnegative weights summing to one, let `v_j = sum_i w_i * 1[argmax(p_i) = j]`. With K >= 2, record:
+
+~~~
+vote_entropy = -sum_j v_j * log(v_j) / log(K)       # 0 log 0 = 0
+vote_margin = largest(v) - second_largest(v)
+pooled_margin = largest(p_bar) - second_largest(p_bar)
+between_chunk_js = H(p_bar) - sum_i w_i * H(p_i)
+within_chunk_entropy = sum_i w_i * H(p_i)
+~~~
+
+Vote entropy/margin detect changing winners; the Jensen-Shannon quantity detects differing distributions even with the same winner. Within-chunk entropy detects uniformly uncertain calls that a unanimous vote hides. For score, additionally report weighted variance/range of per-chunk expected levels; adjacent levels are not the same disagreement as opposite ends of the rubric. For noul, use `[1 - p(true), p(true)]`. Renormalize finite rounded probability vectors before calculating diagnostics; reject invalid vectors, and define K=1 diagnostics as degenerate rather than dividing by log(1).
+
+Candidate escalation policy: any semantic/budget/coverage gate fails, an aggregate tie occurs, vote entropy exceeds a learned threshold, pooled margin falls below a learned threshold, or within-chunk uncertainty exceeds a learned threshold => use the original state on the whole-context path. Disagreement and uncertainty are complementary OR features to evaluate, not mandatory universal thresholds. Calibrate by checkpoint, question type, K and k where data supports it: vote entropy's attainable range changes with the number of chunks. Do not adopt the ordinary single-call confidence threshold unchanged for a pooled result.
+
+This signal is a hypothesis about evidence dependence, not an accuracy certificate. High divergence can mean valid locally different facts, not model failure; unanimous chunks can all be wrong because every slice lost a necessary relationship. Compare disagreement-only, current margin-only, and combined triggers at the same escalation rate/accepted coverage. Prefer whole-context MLX as the next local opinion; only the existing consent/configured policy may then call Jev. Offline sweeps log `would_escalate` and make no additional paid requests.
+
+### Semantic pre-gates: what not to chunk
+
+Default to whole-context for undeclared semantics. A generic caller/experiment can explicitly declare modes such as `document_vote`, `independent_unit_mean`, or `existential_local_evidence`; these are proposed policy metadata, not accepted wire fields yet. A type (`choice`, `score`, `noul`) or keyword alone is never positive proof that one of these modes is safe.
+
+Cheap conservative rejection cues include count/total, compare across sections, sequence/latest, contradiction/consistency, all/every, none/absence, global optimum, linked records, or instructions requiring multiple facts together. They are language-dependent deny signals, not a complete classifier. For example, “does any pair conflict?” contains “any” but still needs cross-chunk reasoning. When classification is uncertain, or structured-state relationships are unknown, bypass chunking. Preserve checkpoint and option-count exclusions; chunking state does not solve a head that consumes L or K above the artifact's output capacity.
+
+### Hierarchical and iterative variants
+
+Laya can technically accept a second typed question over a serialized list of first-stage winners/probabilities or extracted text. That is a new task requiring independent evaluation, not continuation of the original request. Winner labels alone discard negative evidence, contradictions, and context; asking a model to vote on them cannot reconstruct what it never saw. Adding evidence windows may itself exceed L, and Laya's typed head does not generate faithful free-text summaries/rationales.
+
+If explored, use deterministic extracts with source-span ids, bound the experiment to k first-stage calls plus one meta-call, and expose both stages in results. Re-render and count the meta-question under its own budget. Do not recursively summarize until something fits. Compare against simple pooling and whole-context MLX; do not use meta-model agreement as ground truth. This stays behind the basic geometry/disagreement experiments in priority.
+
+### Failure taxonomy, lifecycle, and answer integrity
+
+| Failure | Required behavior / stable reason candidate |
+| --- | --- |
+| Unknown/global semantics, relational structured state | Bypass before inference: `chunk_semantics_unsupported`. |
+| No state room, excessive options, marker loss | Bypass: `chunk_head_over_capacity` / `chunk_options_over_capacity`; never trim the question or drop choices. |
+| Uncovered spans, unsafe boundaries, overflow after re-tokenization | Do not aggregate an incomplete request: `chunk_coverage_invalid` / `chunk_render_overflow`. |
+| Conflicting votes, tie, uncertain aggregate | Whole-state escalation: `chunk_disagreement` / `chunk_uncertain`; semantic escalation is not a native ANE error. |
+| Native capacity/shape error mid-series | Abort the series; apply the existing narrow taxonomy with at most one MLX retry of the original full request. Do not retry each slice and quietly mix different backends into an ANE vote. |
+| Native hard error or malformed/non-finite output | Surface the existing hard error; do not disguise it as disagreement or silently discard the failed slice. |
+| Chunk cap/deadline/queue exhausted | Preflight bypass when possible: `chunk_budget_exceeded`; otherwise stop scheduling. Whole-state escalation needs remaining budget; never return partial aggregation as a complete answer. |
+
+Use the shared dispatch executor, bounded queues and a per-request `max_chunks`/total deadline. Reserve fallback budget before starting if fallback is promised. No unbounded chunk fan-out or nested retry loops. One immutable capability/config snapshot governs the series; a model lease and native execution permit survive cancellation until actual native work completes. Include queue time, repeated question tokens, all attempts, and later escalation in total latency/usage/cost. Profile serial execution first; running competing ANE calls concurrently is not assumed to reduce latency.
+
+Keep production `answers` unchanged during the experiment: offline reports or opt-in shadow records contain aggregates, while `/predict` still returns the normal whole-context primary result. Store the original full raw count plus per-chunk counts; do not replace the routing gate count with the largest small slice. Do not manufacture an `action.act_probability` by averaging learned action heads, or call vote concentration the original model's confidence. Promotion to live answers requires a versioned aggregate schema/calibration decision (including the action field) and an explicit strategy identifier; same-shaped JSON alone is insufficient compatibility.
+
+One request event may contain bounded chunk summaries: strategy/version, geometry, k, source offsets, coverage/overlap fraction, raw/full and per-chunk token counts, checkpoint/profile, aggregate method, disagreement statistics, trigger, per-stage timings and total cost. Keep state/evidence text out of logs. Any future runtime strategy config is off by default and reloads atomically under the existing config rules.
+
+### What T024 should measure first
+
+1. Paired baseline, same labeled documents/questions and checkpoint family: whole-context MLX; ANE chunks; MLX on those exact same chunks with the same aggregator. The latter isolates chunk/aggregation loss from CoreML numeric/backend drift. Add a whole-context larger ANE profile when available. If the “whole-context” request exceeds MLX's own max_len, flag truncation and report it separately; it is not a full-evidence reference. Forced multilingual experiments on English data are labeled as such, never silently compared as equivalent to the English checkpoint.
+2. Start with k=2/3/4 and the measured dynamic head budget. Establish naive non-overlap, then sentence packing, then 25% overlap; record actual k and unique coverage. Do not tune geometry and aggregation simultaneously. Stratify by question type, family, head size, K, state length, and evidence location. Keep single-chunk fitting controls.
+3. Use labels for accuracy; MLX agreement is only a diagnostic. Report choice accuracy/macro-F1, score error and rubric-appropriate ordinal metrics, and noul precision/recall/false positives. Include rare decisive evidence among irrelevant chunks, cross-boundary negation/coreference, contradictions, reordered facts, counts/universal/absence questions, duplicated overlap, long options, Unicode, and structured keys as stress/rejection cases.
+4. Fit disagreement/margin thresholds on a validation split; freeze them before held-out testing. Keep chunks from one document in the same split, and group related documents to avoid leakage. Report accepted-set error versus coverage, would-escalate rate, escalations that correct versus regress an answer, overall routed accuracy and remaining undetected errors. Compare trigger families at equal remote/escalation budgets; bootstrap by document, not by chunk.
+5. Report end-to-end p50/p95/p99, per-call/queue/render time, k-dependent total tokens, rejection rates, completed/aborted series, warm/cold conditions and memory. Include the latency of the whole-state escalation in the policy result. Energy/power is a separate measurement prerequisite for any efficiency claim, not an inference from using ANE. Keep Jev disabled in sweeps unless a separately authorized, capped evaluation requests it.
+
+Promotion requires a predeclared quality tolerance and a measured benefit against whole-context MLX on the intended semantic subset, plus bounded failure behavior and answer-contract tests. Reject the strategy when it is dominated on quality/latency/resource use. ANE coverage percentage by itself is not a success metric.
+
 ## Voice and naming
 
 The package, Cargo crates, CLI, and repository are jevalaya, the fusion of Jev and Laya. User-facing prose, README copy, CLI help, and tasteful log headings may carry a warm Deep South/Cajun register: an occasional "cher" (shah), "lagniappe", r-dropped phrasing such as "togetha", and "Laissez les bons temps rouler!" as an opener. Technical identifiers, JSON keys, error codes, thresholds, and machine-readable logs stay plain and stable. Flavor is seasoning, never an obstacle to precise operations or safe failure.
