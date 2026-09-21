@@ -487,6 +487,38 @@ async fn ane_capacity_retries_once_on_mlx() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn ane_warming_retries_once_on_mlx() {
+    // Cold ANE residency reports a fast NotReady("ane_warming: …"); the
+    // router fails over to MLX in the same request rather than blocking
+    // on the 50–90 s load.
+    let ane = MockBackend::scripted(
+        BackendKind::Ane,
+        vec![Err(BackendError::NotReady(
+            "ane_warming: model loading".into(),
+        ))],
+    );
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.9, (0.9, 0.1));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Ane, ane.clone());
+    backends.insert(BackendKind::Mlx, mlx.clone());
+    let r = Router::for_test(
+        cfg_with_ane(),
+        Arc::new(ScriptedEngine::new(50, 50)),
+        backends,
+        vec![BackendKind::Ane, BackendKind::Mlx],
+    );
+    let out = r.predict(body(json!(DE), "auto")).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Mlx);
+    assert!(d.fallback);
+    assert_eq!(d.fallback_from, Some(BackendKind::Ane));
+    assert_eq!(d.fallback_reason.as_deref(), Some("not_ready"));
+    assert!(d.reason.contains("ane_warming"), "reason: {}", d.reason);
+    assert_eq!(ane.calls(), 1);
+    assert_eq!(mlx.calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn ane_hard_error_never_retries() {
     let ane = MockBackend::scripted(
         BackendKind::Ane,

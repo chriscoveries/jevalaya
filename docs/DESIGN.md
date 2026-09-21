@@ -231,6 +231,9 @@ enabled = true
 model = "/models/laya-multilingual-coreml-ane"
 max_tokens = 96
 alignment = 1
+# false: cold ANE warms in background on first eligible request — that
+#   request and any while loading fail over to MLX with ane_warming.
+# true: block readiness until the model is resident (production default).
 preload = false
 
 [mlx]
@@ -401,6 +404,7 @@ Preserve current jev-ultrafast retry behavior: only 429, 529, and 503, up to thr
 - The embedded PyO3 bridge owns up to max_loaded checkpoints through laya-mlx LRU; Rust owns no duplicate MLX weights.
 - Jev is stateless except for the HTTP connection pool.
 - preload=false means no model engine. preload=true loads configured MLX checkpoints after the embedded bridge is ready; ANE remains lazy unless ane.preload=true. Explicit lifecycle calls may preload/unload by backend/checkpoint. `max_loaded` is a hard resident-checkpoint cap: a preload set larger than it is a configuration error (or must explicitly raise the configured cap before startup), never silent load/evict churn.
+- ANE residency warms in the background, never inside a request. The first eligible request on a cold ANE (or any request while its ~50–90 s verify+compile+load is in flight) returns `not_ready`/`ane_warming` immediately and the router serves MLX in the same request; once resident, eligible requests take ANE. ane.preload=true blocks readiness until resident — the production default for latency-critical deployments, since a cold ANE otherwise makes every early eligible request take the MLX path.
 - unload(ane) releases CoreML; unload(mlx/checkpoint) drops the corresponding Python Agent; unload(all) releases both. Later requests may lazy-load again.
 - Capacity fallback releases ANE before MLX retry and never invokes ANE twice in one request. Deterministic shape failure may circuit-break ANE until reload.
 - Semaphores bound CoreML, the embedded MLX bridge/GIL work, and total request concurrency. Busy requests return 429; do not queue unboundedly.

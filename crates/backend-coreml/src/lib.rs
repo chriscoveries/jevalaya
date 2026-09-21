@@ -26,7 +26,7 @@ mod native;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
 use jevalaya_render::{to_internal, Question};
@@ -83,6 +83,14 @@ struct AgentCfg {
 struct Inner {
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     model: Option<native::NativeModel>,
+    /// A background residency load is in flight.
+    loading: bool,
+    /// Latched load failure: `(capacity_class, message)`. Hard failures
+    /// latch until `unload`; capacity-class failures are retried on the
+    /// next predict.
+    load_error: Option<(bool, String)>,
+    /// Bumped by `unload` so an in-flight load discards its result.
+    generation: u64,
     circuit_open: bool,
 }
 
@@ -97,7 +105,9 @@ pub struct AneBackend {
     temperature_by_options: HashMap<String, f64>,
     compute_units_name: String,
     cache_dir: PathBuf,
-    inner: Mutex<Inner>,
+    /// `(Mutex, Condvar)` pair: the condvar lets `preload` wait for an
+    /// in-flight background load to reach a terminal state.
+    state: Arc<(Mutex<Inner>, Condvar)>,
     detail: String,
     os_ok: bool,
 }
@@ -196,11 +206,17 @@ impl AneBackend {
             temperature_by_options: agent.temperature_by_options,
             compute_units_name,
             cache_dir,
-            inner: Mutex::new(Inner {
-                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-                model: None,
-                circuit_open: false,
-            }),
+            state: Arc::new((
+                Mutex::new(Inner {
+                    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                    model: None,
+                    loading: false,
+                    load_error: None,
+                    generation: 0,
+                    circuit_open: false,
+                }),
+                Condvar::new(),
+            )),
             detail,
             os_ok,
         })
@@ -232,12 +248,14 @@ impl PredictBackend for AneBackend {
     }
 
     fn capabilities(&self) -> BackendCapabilities {
-        let circuit = self.inner.lock().map(|i| i.circuit_open).unwrap_or(true);
+        let inner = self.state.0.lock().unwrap();
         BackendCapabilities {
             kind: BackendKind::Ane,
-            available: ANE_TARGET && self.os_ok && !circuit,
-            detail: if circuit {
+            available: ANE_TARGET && self.os_ok && !inner.circuit_open,
+            detail: if inner.circuit_open {
                 format!("{}; circuit open", self.detail)
+            } else if inner.loading {
+                format!("{}; warming", self.detail)
             } else {
                 self.detail.clone()
             },
@@ -245,16 +263,71 @@ impl PredictBackend for AneBackend {
     }
 
     async fn preload(&self, _request: PreloadRequest) -> Result<(), BackendError> {
-        self.ensure_model().map(|_| ())
+        // Block (in the caller's spawn_blocking context) until the model
+        // is resident or loading reaches a terminal failure. When no load
+        // is in flight this performs it inline.
+        let (mu, cv) = &*self.state;
+        loop {
+            let generation = {
+                let mut inner = mu.lock().unwrap();
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                if inner.model.is_some() {
+                    return Ok(());
+                }
+                if inner.loading {
+                    inner = cv.wait(inner).unwrap();
+                    continue;
+                }
+                if let Some((_, msg)) = inner.load_error.clone() {
+                    return Err(BackendError::Inference(msg));
+                }
+                #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+                return Err(BackendError::Unavailable(
+                    "ane backend requires macOS arm64".into(),
+                ));
+                #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+                {
+                    inner.loading = true;
+                    inner.load_error = None;
+                    inner.generation
+                }
+            };
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            {
+                let r = self.load_native();
+                let mut inner = mu.lock().unwrap();
+                inner.loading = false;
+                match r {
+                    Ok(model) => {
+                        if inner.generation == generation {
+                            inner.model = Some(model);
+                        }
+                    }
+                    Err(e) => inner.load_error = Some(latched(&e)),
+                }
+                cv.notify_all();
+                if inner.model.is_some() {
+                    return Ok(());
+                }
+                if let Some((_, m)) = &inner.load_error {
+                    return Err(BackendError::Inference(m.clone()));
+                }
+                // Generation changed mid-load (unload raced us): retry.
+            }
+        }
     }
 
     async fn unload(&self, _target: UnloadTarget) -> Result<(), BackendError> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.state.0.lock().unwrap();
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             inner.model = None;
         }
+        inner.load_error = None;
         inner.circuit_open = false;
+        // Invalidate any in-flight background load; its result is
+        // discarded on completion.
+        inner.generation += 1;
         Ok(())
     }
 
@@ -279,7 +352,7 @@ impl PredictBackend for AneBackend {
                     .unwrap_or("a newer macOS")
             )));
         }
-        if self.inner.lock().unwrap().circuit_open {
+        if self.state.0.lock().unwrap().circuit_open {
             return Err(BackendError::Unavailable(
                 "ane circuit open after deterministic failure".into(),
             ));
@@ -353,12 +426,11 @@ impl PredictBackend for AneBackend {
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 impl AneBackend {
-    /// Lazy residency: load + signature-validate on first use.
-    fn ensure_model(&self) -> Result<(), BackendError> {
-        let mut inner = self.inner.lock().unwrap();
-        if inner.model.is_some() {
-            return Ok(());
-        }
+    /// The full cold-load path: bundle verify → package materialize →
+    /// mlpackage compile → MLModel load + signature check. Runs inside
+    /// `preload`; the request path uses the background-thread variant in
+    /// `ensure_model`.
+    fn load_native(&self) -> Result<native::NativeModel, BackendError> {
         let package = self.cache_or_bundle_package()?;
         let compiled = self.bundle.compiled_model_dir(&self.cache_dir);
         native::compile_package(&package, &compiled).map_err(|e| match e {
@@ -367,7 +439,7 @@ impl AneBackend {
         })?;
         let units = native::parse_compute_units(&self.compute_units_name)
             .map_err(BackendError::Inference)?;
-        let model = native::NativeModel::load(
+        native::NativeModel::load(
             &compiled,
             self.hidden,
             self.bundle.fixed_len(),
@@ -377,17 +449,67 @@ impl AneBackend {
         .map_err(|e| match e {
             native::NativeError::Capacity(m) => BackendError::Capacity(m),
             native::NativeError::Inference(m) => BackendError::Inference(m),
-        })?;
-        inner.model = Some(model);
-        Ok(())
+        })
+    }
+
+    /// Residency gate for the request path: `Ok` when the model is
+    /// resident. Otherwise kicks off (or observes) a background load and
+    /// returns `NotReady("ane_warming…")` fast so the router fails over
+    /// to MLX instead of blocking 50–90 s inside the request.
+    fn ensure_model(&self) -> Result<(), BackendError> {
+        let (mu, _cv) = &*self.state;
+        let mut inner = mu.lock().unwrap();
+        if inner.model.is_some() {
+            return Ok(());
+        }
+        if inner.loading {
+            return Err(BackendError::NotReady("ane_warming: model loading".into()));
+        }
+        if let Some((capacity, msg)) = &inner.load_error {
+            let (capacity, msg) = (*capacity, msg.clone());
+            if !capacity {
+                return Err(BackendError::Inference(msg));
+            }
+            // Transient capacity failure: clear and retry once more.
+            inner.load_error = None;
+        }
+        inner.loading = true;
+        let generation = inner.generation;
+        // The loader thread cannot borrow `self`, so it re-opens the
+        // bundle from owned context.
+        let ctx = LoadCtx {
+            bundle_dir: self.bundle.dir.clone(),
+            cache_dir: self.cache_dir.clone(),
+            compute_units: self.compute_units_name.clone(),
+            hidden: self.hidden,
+            fixed_len: self.bundle.fixed_len(),
+            max_options: self.bundle.max_options(),
+        };
+        let state = self.state.clone();
+        std::thread::spawn(move || {
+            let r = ctx.load();
+            let (mu, cv) = &*state;
+            let mut inner = mu.lock().unwrap();
+            inner.loading = false;
+            match r {
+                Ok(model) => {
+                    if inner.generation == generation {
+                        inner.model = Some(model);
+                    }
+                }
+                Err(e) => inner.load_error = Some(latched(&e)),
+            }
+            cv.notify_all();
+        });
+        Err(BackendError::NotReady("ane_warming: model loading".into()))
     }
 
     fn run_model(&self, inputs: &host::AneInputs) -> Result<(Vec<f32>, Vec<f32>), BackendError> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.state.0.lock().unwrap();
         let model = inner
             .model
             .as_ref()
-            .ok_or_else(|| BackendError::NotReady("ane model not resident".into()))?;
+            .ok_or_else(|| BackendError::NotReady("ane_warming: model loading".into()))?;
         match model.predict(
             inputs,
             self.bundle.fixed_len(),
@@ -407,8 +529,62 @@ impl AneBackend {
 
     /// Shape faults are deterministic bugs: record + open the circuit.
     fn shape_fault(&self, msg: String) -> BackendError {
-        self.inner.lock().unwrap().circuit_open = true;
+        self.state.0.lock().unwrap().circuit_open = true;
         BackendError::Shape(msg)
+    }
+}
+
+/// Latchable load-failure record: `(capacity_class, message)`.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn latched(e: &BackendError) -> (bool, String) {
+    match e {
+        BackendError::Capacity(m) => (true, m.clone()),
+        other => (false, other.to_string()),
+    }
+}
+
+/// Owned context the background residency thread loads with — the
+/// thread cannot borrow `&AneBackend`, so it re-opens the bundle and
+/// re-derives the cache paths itself.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+struct LoadCtx {
+    bundle_dir: PathBuf,
+    cache_dir: PathBuf,
+    compute_units: String,
+    hidden: usize,
+    fixed_len: usize,
+    max_options: usize,
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+impl LoadCtx {
+    fn load(&self) -> Result<native::NativeModel, BackendError> {
+        let bundle = bundle::Bundle::open(&self.bundle_dir)
+            .map_err(|e| BackendError::Unavailable(format!("bundle: {e}")))?;
+        bundle
+            .verify_files()
+            .map_err(|e| BackendError::Unavailable(format!("bundle integrity: {e}")))?;
+        let package = bundle
+            .materialized_package(&self.cache_dir)
+            .map_err(|e| BackendError::Unavailable(format!("package materialize: {e}")))?;
+        let compiled = bundle.compiled_model_dir(&self.cache_dir);
+        native::compile_package(&package, &compiled).map_err(|e| match e {
+            native::NativeError::Capacity(m) => BackendError::Capacity(m),
+            native::NativeError::Inference(m) => BackendError::Inference(m),
+        })?;
+        let units =
+            native::parse_compute_units(&self.compute_units).map_err(BackendError::Inference)?;
+        native::NativeModel::load(
+            &compiled,
+            self.hidden,
+            self.fixed_len,
+            self.max_options,
+            units,
+        )
+        .map_err(|e| match e {
+            native::NativeError::Capacity(m) => BackendError::Capacity(m),
+            native::NativeError::Inference(m) => BackendError::Inference(m),
+        })
     }
 }
 
@@ -427,7 +603,7 @@ impl AneBackend {
     }
 
     fn shape_fault(&self, msg: String) -> BackendError {
-        self.inner.lock().unwrap().circuit_open = true;
+        self.state.0.lock().unwrap().circuit_open = true;
         BackendError::Shape(msg)
     }
 }

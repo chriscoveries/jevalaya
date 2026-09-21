@@ -113,3 +113,24 @@ POST /predict — English text:
 cargo test -p jevalaya-backend-coreml: 7 host unit tests + 4 adapter tests
   green; live_ane_predict green against the real HF bundle (env-gated).
 cargo test --workspace: 65 tests green.
+
+=== T004 follow-up: ANE residency warming (ane_warming failover) ===
+
+Contract (DESIGN.md §Engine lifecycle): ANE warms in background; while
+loading, predict returns fast NotReady("ane_warming: model loading") and
+the router serves MLX in the same request. ane.preload=true blocks
+readiness until resident.
+
+Live proof (cache cleared → true cold start):
+  POST /predict (German, eligible) at t≈0:
+    -> 200 in 0.8s, backend "mlx", fallback true, fallback_from "ane",
+       fallback_reason "not_ready",
+       reason "...ane not_ready (backend not ready: ane_warming: model
+       loading), served by mlx" — no 504, no blocking on the ~90 s load.
+  Same request polled every 10 s: mlx (54-203 ms) until t≈100 s, then
+    backend "ane" at 51 ms — residency transition observed live.
+
+Tests: router mock test ane_warming_retries_once_on_mlx (22 router tests
+green); live_ane_predict now asserts cold predict returns ane_warming
+in <10 s, capabilities detail reports "; warming", then polls to a real
+resident answer (72 ms). Workspace: 66 tests green.
