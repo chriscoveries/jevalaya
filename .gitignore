@@ -15,3 +15,4 @@ jevalaya.toml
 tools/bench/datasets/
 tools/bench/results/
 tools/bench/jevalaya.bench.toml
+tools/bench/jevalaya.jev.toml

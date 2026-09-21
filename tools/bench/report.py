@@ -74,6 +74,7 @@ def main():
         ),
         "confidence_mean": round(statistics.mean(confs), 4) if confs else None,
         "margin_mean": round(statistics.mean(margins), 4) if margins else None,
+        "threshold_sweep": threshold_sweep(good),
     }
 
     lines = [
