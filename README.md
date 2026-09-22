@@ -43,8 +43,6 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 **You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
 
-<p align="center"><img src="docs/assets/jev-bell.png" alt="LLM vs Jev: a chat model talks with its hands; Jev just rings the bell" width="420"></p>
-
 ## What is Jev
 
 *TypeSafe's cloud decision API — you send state and typed questions, it sends back answers from inside your own answer set, with confidence.*
@@ -54,6 +52,8 @@ Jev is not a chat LLM — it doesn't generate text. You send it a `state` (any t
 Three primitives, picked by the shape of the question: **noul** — yes/no, returns one probability ("is this urgent?"). **Choice** — pick from known options, returns probabilities over them ("which team handles this?"). **Score** — grade on a rubric, returns a score plus level distribution ("how risky is this?"). No generated JSON to parse, no free-text to regex — it's the piece that turns "ask the model" into "ask a question your code can switch on." There's an interactive playground at [jev-explained](https://jev-explained-repo.vercel.app/) — bring your own TypeSafe or Vercel AI Gateway key.
 
 Laya is the open-weight sibling of the same idea — the same typed-decision contract, running as a local encoder instead of a paid endpoint. jevalaya sits between the two: same `/predict` shape in, Laya on your silicon when it'll do, Jev when it won't.
+
+<p align="center"><img src="docs/assets/jev-bell.png" alt="LLM vs Jev: a chat model talks with its hands; Jev just rings the bell" width="420"></p>
 
 ## How do I use it
 
