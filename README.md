@@ -1,7 +1,10 @@
 <p align="center"><img src="docs/assets/logo.svg" alt="jevalaya" width="320"></p>
 
 # "But we have Jev at home."
+Do you need Jev-like true/false or weighted decision making for your reranker, or hotdog app?
+Are you tired of yet another api key?
 
+Well have we got the package for you!
 *The same Jev-like decision making and more, on your Mac — but the Neural Engine fires 20–30 answers inside one Jev roundtrip, and Jev is still there for the 1-in-50 call that earns it.*
 
 **What is Jev?** TypeSafe's cloud decision API — you send state and typed questions, it sends back answers from inside your own answer set, with confidence.
