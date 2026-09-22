@@ -29,22 +29,7 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 <details>
 <summary>Inside the burst</summary>
 
-**Watch the backends race:** [the three-lane demo](docs/assets/race-demo.mp4) fires the same headline at all three backends concurrently — a 4-call burst each at ANE and MLX plus one real paid Jev call, every marker at its server-measured latency on one shared scale. ANE drains in a tight cluster; MLX stair-steps as calls serialize on the bridge; the API call lands a few hundred milliseconds later, having crossed the internet. The axis always runs to the slowest answer of the session. Every marker stays on the row you asked for; a rerouted call shows as a hollow ring in the answering backend's color (asked ANE, answered MLX → hollow teal on the ANE row). Source: `race.html`/`race.js` in the same directory.
-
-</details>
-
-### 2. The phone home
-
-`backend: jev` `ms: server-reported` `reason: … escalated to jev`
-
-*real Jev API calls on camera — key from Infisical, paid cloud, named reason, same /predict.*
-
-<p align="center"><img src="docs/assets/jev-demo.gif" alt="terminal: two explicit backend=jev calls (931ms, 366ms) and one low-confidence auto-escalation answered by Jev" width="900"></p>
-
-[Inspect the recorded receipts](docs/assets/jev-demo.cast) · [full routing demo (GIF)](docs/assets/demo.gif) · [cast](docs/assets/demo.cast)
-
-<details>
-<summary>Timing and accuracy, in context</summary>
+**Watch the backends race:** [the three-lane demo](docs/assets/race-demo.mp4) fires the same headline at all three backends concurrently — a 4-call burst each at ANE and MLX plus one real paid Jev call, every marker at its server-measured latency on one shared scale. ANE drains in a tight cluster; MLX stair-steps as calls serialize on the bridge; the API call lands a few hundred milliseconds later, having crossed the internet. The axis always runs to the slowest answer of the session. Every marker stays on the row you asked for, in that row's color; a rerouted call shows as a hollow ring labeled with where it actually went (e.g. `→MLX` on the ANE row). Source: `race.html`/`race.js` in the same directory.
 
 | Measurement | Context |
 | --- | --- |
@@ -54,6 +39,7 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 | ~93% | local AG News |
 
 [Full chart: local backends at full power](docs/assets/local-backends.png)
+
 
 </details>
 
@@ -99,7 +85,7 @@ curl -s http://127.0.0.1:8767/predict \
 - ANE only gets short, single questions that fit the exported CoreML head (≤96 rendered tokens) — english and multilingual both ride the Neural Engine when the fit gate passes. Fit decides, not the language detector.
 - An ANE capacity/shape failure retries exactly once on MLX. A hard failure stays visible — we don't dress it up as an answer.
 - Jev fires when you ask for it, when confidence runs too close, or on retry. It's the only path that leaves the machine.
-- Keys live in your environment (Infisical-style), never in this repo.
+- Keys live in your environment — never in this repo.
 
 ## Layout
 
@@ -130,7 +116,7 @@ What you need besides the binary, cher:
 
 - **Model dirs** — `[models]` english/multilingual/typed-decisions plus `[ane] model`: local dirs or HF cache snapshots (e.g. `~/.cache/huggingface/hub/models--aac6fef--...`). Copy `config/jevalaya.example.toml` to `jevalaya.toml` and point it at yours. Offline mode won't touch the network for hub resolution.
 - **laya-mlx checkout + venv** (MLX backend only) — `[mlx] python_path` must include the dir containin' `laya_mlx/` and your venv's `site-packages`. We reuse it in-process; we never vendor it.
-- **Env, not files** — `JEVALAYA_TOKEN` (bearer for `/predict`, configurable name via `auth_token_env`), `TYPESAFE_API_KEY` (only if Jev's enabled; Infisical-style).
+- **Env, not files** — `JEVALAYA_TOKEN` (bearer for `/predict`, configurable name via `auth_token_env`), `TYPESAFE_API_KEY` (only if Jev's enabled).
 - **`jevalaya check --config jevalaya.toml`** validates paths, tokenizer metadata, and backend wiring without loadin' weights. Then `serve`, same flag.
 - **launchd note** — for always-on service, wrap `serve` in a LaunchAgent plist (program args + `KeepAlive`), logs to a file you rotate. Bind stays loopback unless your config says otherwise, on purpose.
 
