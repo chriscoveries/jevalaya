@@ -1,12 +1,20 @@
 <p align="center"><img src="docs/assets/logo.svg" alt="jevalaya" width="320"></p>
 
-# Keep calling Jev. Most of it never leaves the Mac.
+# "But we have Jev at home."
 
-*"But we have Jev at home?" — yeah, and it answers in ~18ms.*
-
-Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust house band for Apple Silicon: short calls hit the Neural Engine, roomier ones ride local MLX, and Jev (TypeSafe) only gets the ticket when confidence/margin say it earned it. Every response carries a routing receipt — backend, latency, reason. Laissez les bons temps rouler.
+One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where it should be answered — and hands you back the answer plus a receipt saying who answered, how long it took, and why. Laissez les bons temps rouler.
 
 <p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
+
+## What it does, in plain English
+
+Every request goes to one of three places. jevalaya picks the cheapest one that can handle it:
+
+- **ANE — the Apple Neural Engine.** It's in every Mac since the M1 and almost nothing uses it. Lots of tiny cores, tiny context, super efficient, super fast. If your question fits in a handful of tokens, this is where it goes — and it answers in milliseconds, on the chip, for free.
+- **MLX — your GPU.** Bigger, heavier, holds much more context. When a question is too long for the Neural Engine, it stays on your Mac anyway and runs locally through MLX.
+- **API — Jev, the cloud.** That means sending a packet from you, past your wifi, through all the internet, to Jev... and back again. For maybe a 1-in-50 chance of a better answer. Oh, and paying for it. jevalaya only spends that call when the local models genuinely can't call it — and tells you exactly why in the receipt.
+
+**You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
 
 ## See it work
 
@@ -149,3 +157,12 @@ Any project on the machine can ask jevalaya a question — define your `state` a
 ## Status
 
 Routing core, CoreML ANE adapter, MLX bridge, and Jev client verified end-to-end — all three backends answer live in the demos above. See `docs/DESIGN.md` for the full contract.
+
+## More from the workshop
+
+- [MacsyZones](https://github.com/chriscoveries/MacsyZones) — organize your windows on macOS, the easy way.
+- [CodexBar](https://github.com/chriscoveries/CodexBar) — usage stats for OpenAI Codex and Claude Code, no login needed.
+- [opengrok](https://github.com/chriscoveries/opengrok) — run any model in Grok Bot; one-command setup, model picker, update-proof doctor.
+- [codex-shim](https://github.com/chriscoveries/codex-shim) — local Responses-API shim exposing BYOK models to Codex Desktop.
+- [antigravity-claude-proxy](https://github.com/chriscoveries/antigravity-claude-proxy) — use Antigravity's Claude/Gemini models inside Claude Code.
+- [CCCC-Workflows](https://github.com/chriscoveries/CCCC-Workflows) — multi-agent collaboration workflows.
