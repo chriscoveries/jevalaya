@@ -28,7 +28,7 @@ pub mod schema;
 pub mod types;
 
 pub use checkpoint::{choose_checkpoint, match_typed_decisions_workflow, CheckpointChoice};
-pub use config::{AnePolicy, JevPolicy, PolicyConfig};
+pub use config::{AnePolicy, BackendThresholds, JevPolicy, PolicyConfig, ThresholdsPolicy};
 pub use decision::{reason, trigger, RouteDecision};
 pub use engine::{LayaPromptEngine, PromptEngine};
 pub use errors::RouteError;

@@ -193,22 +193,28 @@ impl JevBackend {
     }
 }
 
-/// TypeSafe requires `criteria` as a dict; the shared laya schema also
-/// accepts a bare label list (`dict.fromkeys` semantics — the label is the
-/// criterion). Upgrade all-string lists to `{label: null}` at the adapter
-/// boundary so any laya-valid request is Jev-compatible (verified: the
-/// provider accepts null descriptors; a list body is a 422).
+/// TypeSafe requires `criteria` as a dict for choice questions; the shared
+/// laya schema also accepts a bare label list (`dict.fromkeys` semantics).
+/// Upgrade all-string lists to `{label: null}` at the adapter boundary so
+/// any laya-valid choice request is Jev-compatible (verified: the provider
+/// accepts null descriptors; a list body is a 422).
+///
+/// Score level-lists are NOT upgraded: the list order IS the ordinal scale,
+/// and rewriting it as a dict is exactly what the provider 422s (T029).
 fn jev_questions(questions: &Map<String, Value>) -> Map<String, Value> {
     let mut out = questions.clone();
     for qdef in out.values_mut() {
         let Some(obj) = qdef.as_object_mut() else {
             continue;
         };
+        if obj.get("type").and_then(Value::as_str) != Some("choice") {
+            continue;
+        }
         let Some(Value::Array(labels)) = obj.get("criteria") else {
             continue;
         };
         if labels.is_empty() || !labels.iter().all(|l| l.is_string()) {
-            continue; // score criteria are lists of structured levels — leave alone
+            continue;
         }
         let dict: Map<String, Value> = labels
             .iter()
@@ -513,6 +519,29 @@ mod tests {
         let sent: Value = serde_json::from_str(&mock.bodies.lock().unwrap()[0]).unwrap();
         let crit = &sent["questions"]["topic"]["criteria"];
         assert_eq!(crit, &serde_json::json!({"a": null, "b": null}));
+    }
+
+    #[test]
+    fn score_level_lists_are_never_upgraded() {
+        // T029: score criteria are ordinal lists — rewriting them as dicts
+        // is what the provider 422s. Only choice lists upgrade.
+        let questions: Map<String, Value> = serde_json::json!({
+            "sev": {"type": "score", "instructions": "How severe?",
+                    "criteria": ["trivial", "annoying", "unusable"]},
+            "topic": {"type": "choice", "instructions": "Pick",
+                      "criteria": ["a", "b"]},
+            "ok": {"type": "noul", "instructions": "OK?"},
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        let out = jev_questions(&questions);
+        assert_eq!(
+            out["sev"]["criteria"],
+            serde_json::json!(["trivial", "annoying", "unusable"])
+        );
+        assert_eq!(out["topic"]["criteria"], serde_json::json!({"a": null, "b": null}));
+        assert!(out["ok"].get("criteria").is_none());
     }
 
     #[test]

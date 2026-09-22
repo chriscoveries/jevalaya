@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use jevalaya_router_core::{BackendKind, Checkpoint, LayaPromptEngine, PolicyConfig, RouteError};
+use jevalaya_router_core::{
+    BackendKind, BackendThresholds, Checkpoint, LayaPromptEngine, PolicyConfig, RouteError,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct ServerConfig {
@@ -137,6 +139,16 @@ pub struct PolicyOverrides {
     /// `compare=true` fan-out set (names like "mlx", "jev").
     #[serde(default)]
     pub compare_backends: Vec<String>,
+    /// `[policy.thresholds.ane]` / `[policy.thresholds.mlx]` — per-backend
+    /// escalation gates; absent fields inherit the global `[jev]` keys.
+    #[serde(default)]
+    pub thresholds: ThresholdsSection,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ThresholdsSection {
+    pub ane: Option<BackendThresholds>,
+    pub mlx: Option<BackendThresholds>,
 }
 
 fn default_listen() -> String {
@@ -307,6 +319,8 @@ impl ServerConfig {
             }
         }
         policy.jev.escalate_on_retry = self.jev.escalate_on_retry;
+        policy.thresholds.ane = self.policy.thresholds.ane;
+        policy.thresholds.mlx = self.policy.thresholds.mlx;
         Ok(policy)
     }
 
