@@ -637,6 +637,8 @@ One request event may contain bounded chunk summaries: strategy/version, geometr
 
 Promotion requires a predeclared quality tolerance and a measured benefit against whole-context MLX on the intended semantic subset, plus bounded failure behavior and answer-contract tests. Reject the strategy when it is dominated on quality/latency/resource use. ANE coverage percentage by itself is not a success metric.
 
+**Measured outcome (T024, 503 long AG News docs, paired arms):** naive chunking is dominated — pooled-mean chunks score 0.9026 vs 0.9404 whole-English-MLX and 0.9304 whole-multilingual-MLX, and hard majority voting is disqualified (0.672, 144 ties). ANE↔MLX agreement on identical chunks is 1039/1040 with 0.00046 mean probability drift, so the deficit is entirely context/aggregation loss, not the accelerator. Vote entropy does calibrate (high-entropy docs: 0.81 acc / 100% would-escalate vs 0.94 / 15% for unanimous docs), which keeps chunk disagreement viable as an *escalation signal* even though chunking is rejected as a general quality path.
+
 ## Voice and naming
 
 The package, Cargo crates, CLI, and repository are jevalaya, the fusion of Jev and Laya. User-facing prose, README copy, CLI help, and tasteful log headings may carry a warm Deep South/Cajun register: an occasional "cher" (shah), "lagniappe", r-dropped phrasing such as "togetha", and "Laissez les bons temps rouler!" as an opener. Technical identifiers, JSON keys, error codes, thresholds, and machine-readable logs stay plain and stable. Flavor is seasoning, never an obstacle to precise operations or safe failure.
