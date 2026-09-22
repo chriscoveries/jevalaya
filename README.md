@@ -6,6 +6,10 @@ One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where
 
 <p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
+## What it does
+
+*The same Jev-like decision making and more, on your Mac — but the Neural Engine fires 20–30 answers inside one Jev roundtrip, and Jev is still there for the 1-in-50 call that earns it.*
+
 ## SPEEEEED
 
 ### 1. SPEEEEED
@@ -31,17 +35,6 @@ One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where
 
 </details>
 
-## What it does
-
-*The same API, on your Mac — the Neural Engine fires 20–30 answers inside one Jev roundtrip, and Jev is still there for the 1-in-50 call that earns it.*
-
-- `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
-- Routes by content: checkpoint family (english / multilingual / typed-decisions), rendered token count, and confidence — with a fallback hop from ANE to MLX and an escalation hop from local to Jev.
-- Degrades graceful: runs fine on three backends, two, or just one — whatever's standin' is what you get, always with the full routing receipt.
-- Every request writes a structured event (latency, backend, confidence, cost) to a JSONL stream — that's the lagniappe a future lil' app can visualize.
-- Compare mode: ask for `compare=["ane","mlx","jev"]` and get every backend's answer side by side.
-
-**Point it at your models, keep TYPESAFE_API_KEY for the ones that earn the ride, keep POSTing /predict. Same Jev. Smarter pots.**
 
 ## ELI12
 
