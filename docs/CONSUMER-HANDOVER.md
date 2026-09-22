@@ -87,6 +87,7 @@ Read it like this: `backend` is who answered; `reason` is a stable prefix plus h
 ### Overrides
 
 - `POST /v1/systemone` is an alias of `/predict` — existing Jev clients that post `{model, state, questions}` can repoint their `base_url` at jevalaya unchanged. `jev-*` model ids are accepted and don't pin a checkpoint; only `english`/`multilingual`/`typed-decisions` pin weights.
+- **Heads up: `jev-*` means remote by design.** A client that sends `model: "jev-latest"` (webctl and agent-beacon both do) is namin' the remote model, so the router honors it and escalates — every such request spends the API. If you want a Jev-native client to actually ride local, pass a local checkpoint name instead (`model: "multilingual"`) or drop the field. Verified consumers: webctl (`jev.base_url` → `http://127.0.0.1:8767`), agent-beacon (`beacon memory evaluations run --jev-endpoint http://127.0.0.1:8767/v1/systemone --jev-api-key $JEVALAYA_TOKEN`).
 - `"backend": "ane"` asks for the Neural Engine but doesn't skip the safety gates — short single multilingual only (≤96 rendered tokens), or you'll ride MLX with an honest reason. `"backend": "mlx"` pins local. `"backend": "jev"` goes straight to TypeSafe (needs the key; `token_count` stays null — Jev tokenizes server-side).
 - `"model": "multilingual"` pins the checkpoint; otherwise script/language detection picks (explicit beats detected, always).
 - `"compare": ["mlx", "jev"]` (or `true`) fans out and returns every backend's answer side by side under `compare`, primary first. Handy for calibratin' your own thresholds.
