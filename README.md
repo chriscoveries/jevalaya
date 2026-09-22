@@ -48,6 +48,8 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 **You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
 
+<p align="center"><img src="docs/assets/jev-bell.png" alt="LLM vs Jev: a chat model talks with its hands; Jev just rings the bell" width="420"></p>
+
 ## What is Jev
 
 *TypeSafe's cloud decision API — you send state and typed questions, it sends back answers from inside your own answer set, with confidence.*
