@@ -14,6 +14,12 @@ Laissez les bons temps rouler, cher — this here's a fast little router for you
 - Every request writes a structured event (latency, backend, confidence, cost) to a JSONL stream — that's the lagniappe a future lil' app can visualize.
 - Compare mode: ask for `compare=["ane","mlx","jev"]` and get every backend's answer side by side.
 
+## See it work
+
+<p align="center"><img src="docs/assets/demo.gif" alt="live terminal demo: /predict routing to ANE, MLX, and Jev, plus /feedback" width="900"></p>
+
+Real terminal, real server — five beats: health, ANE on a short request, ANE on English (fit decides, not the detector), multi-question MLX, explicit Jev escalation, and a consumer verdict into `/feedback`.
+
 ## Quick start
 
 ```bash
