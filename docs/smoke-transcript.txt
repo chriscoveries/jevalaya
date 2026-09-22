@@ -7,7 +7,7 @@ Build:
    import is refused by the bridge guard)
 
 Serve (secrets env-only):
-  TYPESAFE_API_KEY=<infisical jev> JEVALAYA_TOKEN=dev-smoke \
+  TYPESAFE_API_KEY=<env> JEVALAYA_TOKEN=dev-smoke \
     ./target/debug/jevalaya serve --config jevalaya.toml
 
   log:
