@@ -178,8 +178,12 @@ pub fn route(
         cfg.auto_task_detection,
         cfg.default_checkpoint,
     )?;
-    let cp = choice.checkpoint;
+    let detected_cp = choice.checkpoint;
     let single = req.parsed.len() == 1;
+    // An explicit `model=`/`task=` request pins the checkpoint — T023's
+    // ANE-fit selection may not override it. `lang=` is a detection hint,
+    // not a pin: a fitting prompt still goes to the multilingual bundle.
+    let checkpoint_pinned = req.model.is_some() || req.task.is_some();
 
     // ---- 3/4. ANE gates -------------------------------------------
     // Content/shape eligibility (excludes availability + preference, so
@@ -213,14 +217,16 @@ pub fn route(
             &mut eligible,
         );
     }
-    if cp == Checkpoint::TypedDecisions || choice.workflow.is_some() {
+    if detected_cp == Checkpoint::TypedDecisions || choice.workflow.is_some() {
         fail(
             reason::TYPED_DECISIONS,
             true,
             &mut first_fail,
             &mut eligible,
         );
-    } else if cp != Checkpoint::Multilingual {
+    } else if checkpoint_pinned && detected_cp != Checkpoint::Multilingual {
+        // An explicit `model=`/`task=` pin names weights the ANE bundle
+        // does not have — detection never produces this gate (T023).
         fail(
             reason::NOT_MULTILINGUAL,
             true,
@@ -232,8 +238,10 @@ pub fn route(
         fail(reason::QUESTION_COUNT, true, &mut first_fail, &mut eligible);
     }
 
-    // Token-count gate runs only when the content gates so far hold —
-    // counting is the expensive step and meaningless for e.g. English.
+    // Token-count gate runs only when the content gates so far hold.
+    // Counting against the ANE bundle's own tokenizer is the T023 fit
+    // signal — it replaces language detection as the ANE checkpoint
+    // selector, so it runs for every unpinned single-question request.
     // When ANE is up the gate is mandatory (fail closed on missing ANE
     // metadata); when ANE is down the count is informational only.
     let mut ane_gate_counts: Option<GateCounts> = None;
@@ -254,6 +262,10 @@ pub fn route(
             Err(e @ RouteError::NotReady(_)) if !avail.ane => {
                 let _ = e; // ANE is down anyway; the count is moot.
             }
+            // backend=mlx never dispatches ANE — a missing ANE tokenizer
+            // must not kill a pinned-MLX request; the count is only for
+            // the ane_eligible report there.
+            Err(RouteError::NotReady(_)) if req.backend == BackendSpec::Mlx => {}
             Err(e) => return Err(e),
         }
     }
@@ -278,6 +290,24 @@ pub fn route(
         );
     }
 
+    // ---- T023: ANE fit selects the multilingual checkpoint ------------
+    // With no explicit model/task pin and ANE dispatch on the table
+    // (auto or explicit ane), a request that fits the bundle's own
+    // tokenizer budget routes checkpoint=multilingual regardless of the
+    // detected language — the bundle serves English at parity and beats
+    // the detector on non-English Latin. backend=mlx keeps the detected
+    // checkpoint: fit only informs ane_eligible there.
+    let fit_override = eligible
+        && !checkpoint_pinned
+        && matches!(req.backend, BackendSpec::Auto | BackendSpec::Ane)
+        && ane_gate_counts.is_some()
+        && detected_cp != Checkpoint::Multilingual;
+    let cp = if fit_override {
+        Checkpoint::Multilingual
+    } else {
+        detected_cp
+    };
+
     // ---- explicit-backend availability -----------------------------
     if req.backend == BackendSpec::Ane && !avail.ane {
         return Err(RouteError::BackendUnavailable(BackendKind::Ane));
@@ -299,14 +329,24 @@ pub fn route(
     if want_ane {
         let q = &req.parsed[0].1;
         let rendered = engine.ane_render(&req.state, q)?;
+        let (prefix, detail) = if fit_override {
+            (
+                reason::ANE_FIT_MULTILINGUAL,
+                format!(
+                    "single prompt fits the ANE token budget; checkpoint=multilingual (detector: {})",
+                    choice.reason
+                ),
+            )
+        } else {
+            (
+                reason::ANE_SHORT_PATH,
+                "single multilingual prompt fits the ANE token budget".to_string(),
+            )
+        };
         let mut d = RouteDecision::new(
             BackendKind::Ane,
             cfg.ane.model_id.clone(),
-            format!(
-                "{}: {}",
-                reason::ANE_SHORT_PATH,
-                "single multilingual prompt fits the ANE token budget"
-            ),
+            format!("{prefix}: {detail}"),
         );
         d.checkpoint = Some(cp);
         d.token_count = ane_gate_counts.map(|c| c.raw_count as u64);
@@ -326,6 +366,11 @@ pub fn route(
         };
         let detail = match prefix {
             p if p == reason::EXPLICIT_BACKEND => "backend=mlx".to_string(),
+            _ if fit_override => format!(
+                "{} (detector: {})",
+                reason::ANE_FIT_MULTILINGUAL,
+                choice.reason
+            ),
             _ => choice.reason.clone(),
         };
         // token_count: the gate count when ANE was evaluated (ANE model

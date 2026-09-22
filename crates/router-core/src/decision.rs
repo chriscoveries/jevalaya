@@ -22,6 +22,10 @@ pub mod reason {
     pub const TOKEN_COUNT_OVER_LIMIT: &str = "token_count_over_limit";
     /// ANE won every gate: short single-question multilingual prompt.
     pub const ANE_SHORT_PATH: &str = "ane_short_path";
+    /// T023: the request fit the ANE bundle's tokenizer budget, so the
+    /// multilingual checkpoint was selected regardless of detected
+    /// language. The detector's verdict is preserved in the detail.
+    pub const ANE_FIT_MULTILINGUAL: &str = "ane_fit_multilingual";
     /// Auto mode with no usable local backend; Jev is the passthrough.
     pub const NO_LOCAL_BACKEND: &str = "no_local_backend";
     /// Entry inside a `compare` fan-out.

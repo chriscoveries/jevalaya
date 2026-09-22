@@ -315,8 +315,10 @@ async fn three_questions_route_mlx() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn english_and_typed_never_route_ane() {
-    // English state → not_multilingual
+async fn ane_fit_overrides_detected_language() {
+    // T023: an English single-question request that fits the ANE bundle's
+    // tokenizer routes checkpoint=multilingual → ANE — the detector no
+    // longer gates ANE, the bundle's own budget does.
     let r = rig(
         ScriptedEngine::new(20, 20),
         cfg_with_ane(),
@@ -325,10 +327,104 @@ async fn english_and_typed_never_route_ane() {
         true,
     );
     let out = r.router.predict(body(json!(EN), "auto")).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Ane);
+    assert_eq!(d.checkpoint, Some(Checkpoint::Multilingual));
+    assert_eq!(d.reason_prefix(), reason::ANE_FIT_MULTILINGUAL);
+    // the detector's verdict stays visible in the detail
+    assert!(d.reason.contains("English Latin text"), "{}", d.reason);
+    assert!(d.ane_eligible);
+    assert_eq!(r.ane.calls(), 1);
+    assert_eq!(r.mlx.calls(), 0);
+
+    // ANE down → same checkpoint decision, served by multilingual MLX.
+    let r = rig(
+        ScriptedEngine::new(20, 20),
+        cfg_with_ane(),
+        false,
+        true,
+        true,
+    );
+    let out = r.router.predict(body(json!(EN), "auto")).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Mlx);
+    assert_eq!(d.checkpoint, Some(Checkpoint::Multilingual));
+    assert_eq!(d.reason_prefix(), reason::ANE_UNAVAILABLE);
+    assert!(d.reason.contains(reason::ANE_FIT_MULTILINGUAL), "{}", d.reason);
+    assert!(d.ane_eligible);
+    assert!(d.degraded);
+
+    // prefer_ane_for_short=false: fit still selects the checkpoint, MLX
+    // executes it on multilingual weights.
+    let mut cfg = cfg_with_ane();
+    cfg.ane.prefer_ane_for_short = false;
+    let r = rig(ScriptedEngine::new(20, 20), cfg, true, true, true);
+    let out = r.router.predict(body(json!(EN), "auto")).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Mlx);
+    assert_eq!(d.checkpoint, Some(Checkpoint::Multilingual));
+    assert_eq!(d.reason_prefix(), reason::ANE_NOT_PREFERRED);
+    assert!(d.ane_eligible);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn explicit_pins_and_mlx_backend_beat_fit() {
+    // model= pin names weights ANE doesn't have → not_multilingual stands.
+    let r = rig(
+        ScriptedEngine::new(20, 20),
+        cfg_with_ane(),
+        true,
+        true,
+        true,
+    );
+    let b: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": question(), "model": "english",
+    }))
+    .unwrap();
+    let out = r.router.predict(b).await.unwrap();
     assert_eq!(out.routing.backend, BackendKind::Mlx);
     assert_eq!(out.routing.checkpoint, Some(Checkpoint::English));
     assert_eq!(out.routing.reason_prefix(), reason::NOT_MULTILINGUAL);
+    assert!(!out.routing.ane_eligible);
+    assert_eq!(r.ane.calls(), 0);
 
+    // lang= is a hint, not a pin: EN text + explicit lang=en still fits.
+    let r = rig(
+        ScriptedEngine::new(20, 20),
+        cfg_with_ane(),
+        true,
+        true,
+        true,
+    );
+    let b: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": question(), "lang": "en",
+    }))
+    .unwrap();
+    let out = r.router.predict(b).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Ane);
+    assert_eq!(out.routing.checkpoint, Some(Checkpoint::Multilingual));
+    assert_eq!(out.routing.reason_prefix(), reason::ANE_FIT_MULTILINGUAL);
+
+    // backend=mlx keeps the detected checkpoint — fit only informs the
+    // ane_eligible report; ANE is never dispatched.
+    let r = rig(
+        ScriptedEngine::new(20, 20),
+        cfg_with_ane(),
+        true,
+        true,
+        true,
+    );
+    let out = r.router.predict(body(json!(EN), "mlx")).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Mlx);
+    assert_eq!(d.checkpoint, Some(Checkpoint::English));
+    assert_eq!(d.reason_prefix(), reason::EXPLICIT_BACKEND);
+    assert!(d.ane_eligible); // it WOULD fit — honest report
+    assert_eq!(r.ane.calls(), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn typed_decisions_never_routes_ane() {
     // Explicit typed-decisions task → typed_decisions gate
     let b: PredictBody = serde_json::from_value(json!({
         "state": EN, "questions": question(), "task": "typed_decisions",
@@ -723,7 +819,9 @@ async fn compare_fans_out_and_reports_partial() {
     // primary result reused — mlx dispatched once
     assert_eq!(mlx.calls(), 1);
 
-    // ane requested in compare but request ineligible → structured error
+    // ane requested in compare but request ineligible → structured error.
+    // Three questions fail the question_count gate even though the text
+    // would tokenize fine.
     let ane = MockBackend::ok(BackendKind::Ane, 0.9, (0.9, 0.1));
     let mlx = MockBackend::ok(BackendKind::Mlx, 0.9, (0.9, 0.1));
     let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
@@ -735,7 +833,16 @@ async fn compare_fans_out_and_reports_partial() {
         backends,
         vec![BackendKind::Ane, BackendKind::Mlx],
     );
-    let mut b = body(json!(EN), "auto");
+    let mut b: PredictBody = serde_json::from_value(json!({
+        "state": EN,
+        "questions": {
+            "a": {"type":"choice","instructions":"p","criteria":["x","y"]},
+            "b": {"type":"choice","instructions":"p","criteria":["x","y"]},
+            "c": {"type":"choice","instructions":"p","criteria":["x","y"]},
+        },
+        "backend": "auto",
+    }))
+    .unwrap();
     b.compare = Some(CompareSpec::List(vec!["ane".into(), "mlx".into()]));
     let out = r.predict(b).await.unwrap();
     assert_eq!(out.compare["ane"]["error"]["code"], json!("ane_ineligible"));
@@ -861,9 +968,10 @@ async fn event_emitted_per_request() {
     let ev = &events[0];
     assert_eq!(ev.status, 200);
     assert_eq!(ev.backend, Some(BackendKind::Mlx));
-    assert_eq!(ev.checkpoint, Some(Checkpoint::English));
-    // English request: content gate reason wins over ane_unavailable.
-    assert_eq!(ev.reason, reason::NOT_MULTILINGUAL);
+    // T023: English text that fits the ANE budget selects the
+    // multilingual checkpoint; ANE absent → ane_unavailable explains MLX.
+    assert_eq!(ev.checkpoint, Some(Checkpoint::Multilingual));
+    assert_eq!(ev.reason, reason::ANE_UNAVAILABLE);
     assert_eq!(ev.token_count, Some(20));
     assert!(ev.degraded); // ane configured but absent
     let v = serde_json::to_value(ev).unwrap();

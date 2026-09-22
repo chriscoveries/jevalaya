@@ -165,3 +165,11 @@ Post-ramp /health ok; sequential /predict 169 ms. 67 tests green incl.
 new mutex_before_gil_concurrent_calls_complete (time.sleep releases the
 GIL like tokenizers does — same ABBA structure, would deadlock on the
 old order).
+
+=== T023: ANE fit gate replaces language detection (auto mode) ===
+English single-question request, backend=auto. Pre-T023: MLX + not_multilingual.
+Warming phase: checkpoint=multilingual (fit override), ANE NotReady → MLX fallback
+on multilingual weights (~76-1000ms).
+Resident phase: backend=ane, checkpoint=multilingual, 76ms, conf 0.9609.
+reason: "ane_fit_multilingual: single prompt fits the ANE token budget;
+  checkpoint=multilingual (detector: English Latin text)"
