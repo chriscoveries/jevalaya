@@ -20,7 +20,7 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 ### 1. The burst
 
-`backend: ane / mlx` `ms: server-reported` `reason: explicit_backend`
+`backend: ane / mlx / jev` `ms: server-reported` `reason: explicit_backend`
 
 <p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-preview.gif" alt="Burst race: ANE and MLX markers at their server-reported timings, both choosing Sci/Tech (click for full MP4)" width="540"></a></p>
 
@@ -29,7 +29,7 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 <details>
 <summary>Inside the burst</summary>
 
-**Or watch the backends race:** [the head-to-head demo](docs/assets/race-demo.mp4) fires the same headline as a 4-call burst at ANE and MLX concurrently — two lanes, each marker at its server-measured latency. ANE drains the burst in a tight cluster; MLX stair-steps out as calls serialize on the bridge. Same checkpoint on both sides; redirects land on the answering backend's lane as hollow rings, and Jev answers appear separately in amber. Source: `race.html`/`race.js` in the same directory.
+**Watch the backends race:** [the three-lane demo](docs/assets/race-demo.mp4) fires the same headline at all three backends concurrently — a 4-call burst each at ANE and MLX plus one real paid Jev call, every marker at its server-measured latency on one shared scale. ANE drains in a tight cluster; MLX stair-steps as calls serialize on the bridge; the API call lands a few hundred milliseconds later, having crossed the internet. Same checkpoint on all three; redirects land on the answering backend's lane as hollow rings. Source: `race.html`/`race.js` in the same directory.
 
 </details>
 

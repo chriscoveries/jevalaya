@@ -1,5 +1,6 @@
 "use strict";
-// Eight identical asks, four per backend. No retries, staggering, or fabricated timings.
+// Nine identical asks: four per local backend, one paid API call.
+// No retries, staggering, or fabricated timings.
 // Dispatch concurrency is not admission concurrency (browser/server limits still apply).
 const Q = new URLSearchParams(location.search);
 const CFG = Object.assign({ url: "", token: "" }, window.JEVALAYA || {});
@@ -10,7 +11,9 @@ const ITEMS = (CFG.url || "") + "/items?limit=200&offset=0";
 const cv = document.getElementById("race"), cx = cv.getContext("2d");
 const W = 720, H = 720, BURST_SIZE = 4, HOLD_MS = 1000, REQUEST_TIMEOUT_MS = 30000;
 const LABELS = ["World", "Sports", "Business", "Sci/Tech"];
-const BACKENDS = ["ane", "mlx"];
+const BACKENDS = ["ane", "mlx", "jev"];
+const BATCH_SIZE = { ane: BURST_SIZE, mlx: BURST_SIZE, jev: 1 };
+const BACKEND_LABEL = { ane: "ANE", mlx: "MLX", jev: "API" };
 const COLOR = { ane: "#58a6ff", mlx: "#3fb950", jev: "#d29922" };
 const UI = {
   bg: "#0d1117", panel: "#161b22", text: "#f0f6fc", muted: "#8b949e", line: "#30363d", red: "#f85149",
@@ -24,7 +27,7 @@ const autostart = Q.get("autostart") !== "0";
 const controllers = new Set();
 let generation = 0, queue = [], current = null, roundNumber = 0;
 let paused = false, loading = true, loadError = "", lastFrame = 0;
-let scores = { ane: 0, mlx: 0 }, samples = { ane: [], mlx: [] };
+let scores = { ane: 0, mlx: 0, jev: 0 }, samples = { ane: [], mlx: [], jev: [] };
 
 function headlineOf(text) {
   const i = text.search(/[.!?]\s/);
@@ -35,7 +38,7 @@ function reset() {
   for (const controller of controllers) controller.abort();
   controllers.clear();
   queue = []; current = null; roundNumber = 0; paused = false; loading = true; loadError = "";
-  scores = { ane: 0, mlx: 0 }; samples = { ane: [], mlx: [] };
+  scores = { ane: 0, mlx: 0, jev: 0 }; samples = { ane: [], mlx: [], jev: [] };
   const controller = new AbortController(); controllers.add(controller);
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   fetch(ITEMS, { signal: controller.signal })
@@ -60,18 +63,20 @@ function startRound() {
     generation, number: ++roundNumber, row, text: headlineOf(row.text),
     firstReply: null, holdRemaining: null, settledCount: 0, startedAt: performance.now(),
     lanes: BACKENDS.map(key => ({ key, state: "pending", motionMs: 0,
-      calls: Array.from({ length: BURST_SIZE }, (_, index) => ({
+      calls: Array.from({ length: BATCH_SIZE[key] }, (_, index) => ({
         key, id: index + 1, state: "pending", receipt: null, error: "",
       })),
     })),
   };
   current = round;
-  // Interleave lanes; alternate who is launched first each round. All eight
+  // Interleave lanes; alternate who is launched first each round. All nine
   // fetches start in this turn, but neither HTTP/1 nor the shared cap promises
-  // eight admitted requests. Do not hide a 429 by silently retrying it.
+  // nine admitted requests. Do not hide a 429 by silently retrying it.
   const order = round.number % 2 ? round.lanes : [...round.lanes].reverse();
   for (let index = 0; index < BURST_SIZE; index++) {
-    order.forEach(lane => dispatchCall(round, lane, lane.calls[index]));
+    order.forEach(lane => {
+      if (lane.calls[index]) dispatchCall(round, lane, lane.calls[index]);
+    });
   }
 }
 function isCurrent(round) { return generation === round.generation && current === round; }
@@ -104,14 +109,15 @@ function dispatchCall(round, lane, call) {
       call.serverMs = route.latency_ms;
       call.choice = ans.choice;
       call.correct = ans.choice === round.row.label;
-      call.escalated = !!route.escalated || route.backend === "jev";
+      call.escalated = !!route.escalated || (route.backend === "jev" && lane.key !== "jev");
       call.escalationError = !!route.escalation_error;
       call.fallback = !!route.fallback || (!call.escalated && route.backend !== lane.key);
-      call.native = route.backend === lane.key && route.checkpoint === "multilingual"
+      call.native = route.backend === lane.key && (lane.key === "jev" || route.checkpoint === "multilingual")
         && !call.fallback && !call.escalated;
       call.state = "done";
       if (!round.firstReply) round.firstReply = lane.key;
-      // Rerouted requests remain visible, but are not ANE/MLX hardware samples.
+      // Rerouted requests remain visible, but never enter native stats. An
+      // explicit API answer is not a local sample or a local escalation.
       if (call.native) {
         if (call.correct) scores[lane.key]++;
         samples[lane.key].push(call.serverMs);
@@ -142,7 +148,7 @@ function laneStats(lane) {
   };
 }
 function serverScale(round) {
-  const max = Math.max(300, ...round.lanes.flatMap(lane => lane.calls.map(call => call.serverMs || 0)));
+  const max = Math.max(1000, ...round.lanes.flatMap(lane => lane.calls.map(call => call.serverMs || 0)));
   const step = 10 ** Math.floor(Math.log10(max));
   return Math.ceil(max / step) * step;
 }
@@ -208,14 +214,12 @@ function lanePresentation(lane) {
   return { received, own, incoming, serverSpan: span(received.map(call => call.serverMs)) };
 }
 function playfieldLayout() {
-  return actualCalls("jev").length
-    ? { remote: true, laneY: [310, 456], rowStep: 20, cardHeight: 126, font: 24, lineHeight: 27 }
-    : { remote: false, laneY: [338, 490], rowStep: 22, cardHeight: 142, font: 26, lineHeight: 31 };
+  return { laneY: [278, 404, 530], rowStep: 18, cardHeight: 110, font: 23, lineHeight: 24 };
 }
-function localScale() {
-  // A parked remote answer is not on either local time axis, so it must not
-  // stretch that shared axis and visually flatten all the local measurements.
-  return serverScale({ lanes: [{ calls: [...actualCalls("ane"), ...actualCalls("mlx")] }] });
+function sharedScale() {
+  // All three actual-backend lanes use the same server-ms axis. A slow API
+  // receipt must occupy proportionally more distance than a local receipt.
+  return serverScale({ lanes: [{ calls: BACKENDS.flatMap(key => actualCalls(key)) }] });
 }
 function headline(value, layout) {
   cx.beginPath(); cx.roundRect(32, 116, 656, layout.cardHeight, 12);
@@ -235,7 +239,7 @@ function callNote(call) {
   if (call.state === "pending") return "";
   if (call.state === "busy") return "busy · 429";
   if (call.state === "error") return call.error;
-  const identity = call.receipt.backend !== call.key ? `←${call.key.toUpperCase()}`
+  const identity = call.receipt.backend !== call.key ? `←${BACKEND_LABEL[call.key]}`
     : call.escalationError ? "Jev failed" : call.fallback ? "fallback"
     : !call.native ? call.receipt.ckpt : "";
   return [`${call.receipt.ms} ms`, identity, call.correct ? "" : "wrong"].filter(Boolean).join(" · ");
@@ -249,16 +253,16 @@ function drawReceiptMarker(call, x, y, color = callColor(call)) {
   if (!redirected(call)) return dot(x, y, color, 4);
   // Transparent ring, not a filled fake-native dot. Coincident native dots
   // remain visible inside the ring when two real timings are exactly equal.
-  cx.beginPath(); cx.arc(x, y, 6, 0, Math.PI * 2);
-  cx.strokeStyle = color; cx.lineWidth = 2; cx.stroke();
+  cx.beginPath(); cx.arc(x, y, 7, 0, Math.PI * 2);
+  cx.strokeStyle = color; cx.lineWidth = 2.5; cx.stroke();
 }
 function drawConnections(key, y, index, layout) {
   const choices = new Map();
   actualCalls(key, true).forEach(call => choices.set(call.choice, callColor(call)));
   choices.forEach((color, choice) => {
-    const bin = LABELS.indexOf(choice), targetX = 109.5 + bin * 167 + (index ? 5 : -5);
-    const elbowX = [708, 700, 696][index];
-    const elbowY = layout.remote ? [614, 618, 610][index] : [605, 612][index];
+    const bin = LABELS.indexOf(choice), targetX = 109.5 + bin * 167 + (index - 1) * 6;
+    const elbowX = [708, 700, 692][index];
+    const elbowY = [611, 615, 619][index];
     cx.beginPath(); cx.moveTo(693, y); cx.lineTo(elbowX, y); cx.lineTo(elbowX, elbowY);
     cx.lineTo(targetX, elbowY); cx.lineTo(targetX, 622);
     cx.strokeStyle = color + "88"; cx.lineWidth = 1.5; cx.stroke();
@@ -271,13 +275,17 @@ function drawLane(lane, index, now, scale, layout) {
   if (wrong.length && !reducedMotion.matches) {
     const pulse = Math.max(0, 1 - (now - Math.max(...wrong.map(call => call.finishedAt))) / 350);
     cx.fillStyle = UI.red + "14"; cx.globalAlpha = pulse;
-    cx.fillRect(24, y - 54, 672, 148); cx.globalAlpha = 1;
+    cx.fillRect(24, y - 50, 672, 125); cx.globalAlpha = 1;
   }
-  text(lane.key.toUpperCase(), 32, y - 25, 26, COLOR[lane.key], true, "left", 500);
+  text(BACKEND_LABEL[lane.key], 32, y - 22, 24, COLOR[lane.key], true, "left", 600);
   const elapsed = Math.floor(Math.max(0, now - current.startedAt));
-  const server = view.serverSpan === null ? "—" : Math.round(view.serverSpan);
-  text(`${pending ? elapsed : server} ms`, 360, y - 25, 40, UI.text, true, "center", 500);
-  text(pending ? "elapsed" : "server span", end, y - 25, 16, UI.muted, false, "right");
+  // Local bursts retain their measured span. The API's single requested call
+  // displays its own latency, never a zero span or an incoming escalation.
+  const apiReceipt = lane.key === "jev" && lane.calls.find(call => call.state === "done" && call.receipt.backend === "jev");
+  const metric = lane.key === "jev" ? apiReceipt ? apiReceipt.serverMs : null : view.serverSpan;
+  const server = metric === null ? "—" : Math.round(metric);
+  text(`${pending ? elapsed : server} ms`, 360, y - 22, 34, UI.text, true, "center", 500);
+  text(pending ? "elapsed" : lane.key === "jev" ? "server ms" : "server span", end, y - 22, 15, UI.muted, false, "right");
   line(start, y, end, y, COLOR[lane.key] + "66");
   for (let tick = 0; tick <= 4; tick++) {
     const x = start + (end - start) * tick / 4;
@@ -288,19 +296,27 @@ function drawLane(lane, index, now, scale, layout) {
     cx.globalAlpha = paused || reducedMotion.matches ? 0.6 : 0.55 + 0.35 * Math.sin(lane.motionMs / 180);
     dot(46, y, COLOR[lane.key], 3); cx.globalAlpha = 1;
   }
-  const columns = [{ entries: view.own, left: start, right: view.incoming.length ? 384 : end }];
-  if (view.incoming.length) columns.push({ entries: view.incoming.map(call => ({ call })), left: 416, right: end });
+  // Up to nine receipts can converge on one backend. Keep at most four rows
+  // per column, preserving distinct native/source columns without overflow.
+  const groups = [view.own, view.incoming.map(call => ({ call }))], columns = [];
+  groups.forEach(entries => {
+    for (let i = 0; i < entries.length; i += 4) columns.push({ entries: entries.slice(i, i + 4) });
+  });
+  const columnWidth = (end - start + 20) / Math.max(1, columns.length);
+  columns.forEach((column, i) => { column.left = start + i * columnWidth; column.right = start + (i + 1) * columnWidth - 20; });
   const labels = [];
   columns.forEach(column => column.entries.forEach(({ call, outgoing, count }, row) => {
-    const labelY = y + 25 + row * layout.rowStep;
+    const labelY = y + 20 + row * layout.rowStep;
     const color = outgoing ? UI.muted : callColor(call);
-    cx.font = `500 16px ${UI.mono}`;
-    const label = fitText(outgoing ? `→ ${outgoing.toUpperCase()} ×${count}` : callNote(call), column.right - column.left - 8);
+    const isRedirect = !outgoing && call.state === "done" && redirected(call);
+    const size = isRedirect ? 17 : 16, weight = isRedirect ? 650 : 500;
+    cx.font = `${weight} ${size}px ${UI.mono}`;
+    const label = fitText(outgoing ? `→ ${BACKEND_LABEL[outgoing]} ×${count}` : callNote(call), column.right - column.left - 8);
     const width = cx.measureText(label).width;
     if (outgoing || call.state !== "done") {
       // A redirect notice, busy or error has no receipt for THIS backend.
       if (!outgoing && call.state !== "pending") dot(column.left - 18, labelY - 5, color, 3);
-      labels.push({ label, x: column.left, y: labelY, width, color });
+      labels.push({ label, x: column.left, y: labelY, width, color, size, weight });
       return;
     }
     const markerX = start + (end - start) * call.serverMs / scale;
@@ -309,32 +325,19 @@ function drawLane(lane, index, now, scale, layout) {
     line(markerX, y + 8, markerX, labelY - 5, color + "55", 1);
     line(markerX, labelY - 5, leaderX, labelY - 5, color + "55", 1);
     drawReceiptMarker(call, markerX, y);
-    labels.push({ label, x: labelX, y: labelY, width, color });
+    labels.push({ label, x: labelX, y: labelY, width, color, size, weight });
   }));
   // Draw labels after every leader so clustered response stems cannot strike
   // through an earlier label. Exact marker positions remain unchanged.
-  labels.forEach(({ label, x, y, width, color }) => {
+  labels.forEach(({ label, x, y, width, color, size, weight }) => {
     if (!label) return;
     cx.fillStyle = UI.bg; cx.fillRect(x - 2, y - 15, width + 4, 19);
-    text(label, x, y, 16, color, true, "left", 500);
+    text(label, x, y, size, color, true, "left", weight);
   });
   drawConnections(lane.key, y, index, layout);
 }
-function drawRemote(layout) {
-  const calls = actualCalls("jev");
-  if (!calls.length) return;
-  cx.beginPath(); cx.roundRect(32, 552, 656, 56, 8);
-  cx.fillStyle = UI.panel; cx.fill(); cx.strokeStyle = COLOR.jev + "66"; cx.lineWidth = 1.5; cx.stroke();
-  text("JEV", 48, 587, 20, COLOR.jev, true, "left", 500);
-  calls.forEach((call, i) => {
-    const x = 136 + i % 4 * 138, y = 574 + Math.floor(i / 4) * 22;
-    drawReceiptMarker(call, x, y - 5, COLOR.jev);
-    text(`${call.receipt.ms} ms`, x + 12, y, 16, call.correct ? COLOR.jev : UI.red, true, "left", 500);
-  });
-  drawConnections("jev", 580, 2, layout);
-}
 function binHighlights(label) {
-  return [...BACKENDS, "jev"]
+  return BACKENDS
     .map(key => ({ key, calls: actualCalls(key, true).filter(call => call.choice === label) }))
     .filter(lane => lane.calls.length);
 }
@@ -368,20 +371,19 @@ function draw(now = performance.now()) {
   text("jevalaya / burst race", 32, 42, 20, UI.muted, false, "left", 500);
   if (paused) text("Paused", 688, 42, 18, UI.text, false, "right");
   BACKENDS.forEach((key, i) => {
-    const x = 32 + i * 336, p50 = median(samples[key]);
-    text(`${key.toUpperCase()} ${scores[key]}`, x, 88, 26, COLOR[key], true, "left", 500);
-    text(`p50 ${p50 === null ? "—" : Math.round(p50)} ms`, x + 149, 86, 20, UI.muted, true);
+    const x = 32 + i * 224, p50 = median(samples[key]);
+    text(`${BACKEND_LABEL[key]} ${scores[key]}`, x, 76, 24, COLOR[key], true, "left", 500);
+    text(`p50 ${p50 === null ? "—" : Math.round(p50)} ms`, x, 99, 17, UI.muted, true);
   });
   const layout = playfieldLayout();
   headline(current ? current.text : loadError ? `Could not load articles: ${loadError}` : "Waiting for the first headline…", layout);
-  const scale = localScale();
+  const scale = sharedScale();
   if (current) current.lanes.forEach((lane, i) => drawLane(lane, i, now, scale, layout));
   else BACKENDS.forEach((key, i) => {
-    const y = 338 + i * 152;
-    text(key.toUpperCase(), 32, y - 25, 26, COLOR[key], true, "left", 500);
+    const y = layout.laneY[i];
+    text(BACKEND_LABEL[key], 32, y - 22, 24, COLOR[key], true, "left", 600);
     line(112, y, 688, y);
   });
-  drawRemote(layout);
   LABELS.forEach(drawBin);
 }
 addEventListener("keydown", e => {
