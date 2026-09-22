@@ -112,13 +112,36 @@ cargo build --workspace                                 # ./target/debug/jevalay
 
 No Python toolchain on the box? `cargo build -p jevalaya-server --no-default-features` gives you a Jev-only binary, no libpython needed. The ANE adapter compiles everywhere but only serves on Apple Silicon — off-target it registers unavailable instead of lyin' about it.
 
-What you need besides the binary, cher:
+What you need besides the binary — the whole thing, step by step (an agent can run this verbatim):
 
-- **Model dirs** — `[models]` english/multilingual/typed-decisions plus `[ane] model`: local dirs or HF cache snapshots (e.g. `~/.cache/huggingface/hub/models--aac6fef--...`). Copy `config/jevalaya.example.toml` to `jevalaya.toml` and point it at yours. Offline mode won't touch the network for hub resolution.
-- **laya-mlx checkout + venv** (MLX backend only) — `[mlx] python_path` must include the dir containin' `laya_mlx/` and your venv's `site-packages`. We reuse it in-process; we never vendor it.
-- **Env, not files** — `JEVALAYA_TOKEN` (bearer for `/predict`, configurable name via `auth_token_env`), `TYPESAFE_API_KEY` (only if Jev's enabled).
-- **`jevalaya check --config jevalaya.toml`** validates paths, tokenizer metadata, and backend wiring without loadin' weights. Then `serve`, same flag.
-- **launchd note** — for always-on service, wrap `serve` in a LaunchAgent plist (program args + `KeepAlive`), logs to a file you rotate. Bind stays loopback unless your config says otherwise, on purpose.
+```bash
+# 1. Python env for the MLX backend (Python 3.11+; the reference venv is 3.13)
+python3 -m venv .venv && . .venv/bin/activate
+pip install laya-mlx            # gives you the laya_mlx package + mlx
+
+# 2. Model weights — four HF repos, into the standard hub cache
+hf download aac6fef/laya-mlx                        # english checkpoint
+hf download aac6fef/laya-multilingual-mlx           # multilingual checkpoint
+hf download aac6fef/laya-typed-decisions-mlx        # typed-decisions checkpoint
+hf download aac6fef/laya-multilingual-coreml-ane    # CoreML/ANE bundle
+
+# 3. Config — the example already points at the HF cache layout
+cp config/jevalaya.example.toml jevalaya.toml       # fix the four paths if your cache differs
+export JEVALAYA_TOKEN=local-dev                     # bearer for /predict
+export TYPESAFE_API_KEY=...                         # only if you enable Jev
+
+# 4. Validate without loading weights, then serve
+./target/release/jevalaya check --config jevalaya.toml
+./target/release/jevalaya serve --config jevalaya.toml
+```
+
+Notes that matter:
+
+- **`PYO3_PYTHON` is a build-time binding.** The interpreter PyO3 embeds is chosen when you compile, not when you run — set it to your venv python *before* `cargo build` or MLX will pick up the wrong site-packages. (Prebuilt releases were built against Python 3.13.)
+- **`[mlx] python_path`** in the config is a list of `sys.path` entries: the directory containing `laya_mlx/` (a laya-mlx checkout, or your site-packages if pip-installed) plus your venv's `site-packages`.
+- **`[ane] model`** is the CoreML bundle dir (`laya-multilingual-coreml-ane`), separate from the MLX checkpoints.
+- **`offline = true`** keeps hub resolution fully local once the snapshots exist.
+- **launchd** for always-on: wrap `serve` in a LaunchAgent plist (program args + `KeepAlive`), logs to a file you rotate. Bind stays loopback unless your config says otherwise, on purpose.
 
 ## For agents building apps
 
