@@ -8,12 +8,12 @@ if (Q.get("token")) CFG.token = Q.get("token");
 const API = (CFG.url || "") + "/predict";
 const ITEMS = (CFG.url || "") + "/items?limit=200&offset=0";
 const cv = document.getElementById("race"), cx = cv.getContext("2d");
-const W = 960, H = 720, BURST_SIZE = 4, HOLD_MS = 1000, REQUEST_TIMEOUT_MS = 30000;
+const W = 720, H = 720, BURST_SIZE = 4, HOLD_MS = 1000, REQUEST_TIMEOUT_MS = 30000;
 const LABELS = ["World", "Sports", "Business", "Sci/Tech"];
 const BACKENDS = ["ane", "mlx"];
 const COLOR = { ane: "#58a6ff", mlx: "#3fb950", jev: "#d29922" };
 const UI = {
-  bg: "#0d1117", text: "#f0f6fc", muted: "#8b949e", line: "#30363d", red: "#f85149",
+  bg: "#0d1117", panel: "#161b22", text: "#f0f6fc", muted: "#8b949e", line: "#30363d", red: "#f85149",
   sans: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   mono: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
 };
@@ -185,27 +185,30 @@ function fitText(value, width) {
   return chars.join("") + "…";
 }
 function headline(value) {
-  cx.font = `500 28px ${UI.sans}`; cx.fillStyle = UI.text; cx.textAlign = "left";
+  cx.beginPath(); cx.roundRect(32, 116, 656, 142, 12);
+  cx.fillStyle = UI.panel; cx.fill(); cx.strokeStyle = UI.line; cx.lineWidth = 1.5; cx.stroke();
+  cx.font = `500 26px ${UI.sans}`; cx.fillStyle = UI.text; cx.textAlign = "left";
   const lines = []; let row = "";
   for (const word of value.split(/\s+/)) {
     const next = row ? row + " " + word : word;
-    if (row && cx.measureText(next).width > 864) { lines.push(row); row = word; }
+    if (row && cx.measureText(next).width > 608) { lines.push(row); row = word; }
     else row = next;
   }
   if (row) lines.push(row);
-  lines.slice(0, 3).forEach((value, i) => cx.fillText(fitText(value + (i === 2 && lines.length > 3 ? " …" : ""), 864), 48, 148 + i * 36));
+  const shown = lines.slice(0, 4), top = 196 - (shown.length - 1) * 15.5;
+  shown.forEach((value, i) => cx.fillText(fitText(value + (i === 3 && lines.length > 4 ? " …" : ""), 608), 56, top + i * 31));
 }
 function callNote(call) {
-  if (call.state === "pending") return `#${call.id} waiting`;
-  if (call.state === "busy") return `#${call.id} busy · HTTP 429 · no server ms`;
-  if (call.state === "error") return `#${call.id} ${call.error} · no server ms`;
+  if (call.state === "pending") return "";
+  if (call.state === "busy") return "busy · 429";
+  if (call.state === "error") return call.error;
   const actual = call.receipt.backend.toUpperCase();
   const identity = call.native ? "" : [actual,
     call.fallback ? "fallback" : "",
     call.escalated ? `escalated→jev${call.escalationError ? " failed" : ""}` : "",
     !call.fallback && !call.escalated ? `checkpoint ${call.receipt.ckpt}` : "",
   ].filter(Boolean).join(" · ");
-  return [`#${call.id} ${call.receipt.ms} ms`, identity, call.choice, call.correct ? "correct" : "wrong"].filter(Boolean).join(" · ");
+  return [`${call.receipt.ms} ms`, identity, call.correct ? "" : "wrong"].filter(Boolean).join(" · ");
 }
 function callColor(call) {
   if (call.state === "pending" || call.state === "busy") return UI.muted;
@@ -213,21 +216,19 @@ function callColor(call) {
   return COLOR[call.receipt.backend];
 }
 function drawLane(lane, index, now, scale) {
-  const y = 324 + index * 156, start = 152, end = 912;
+  const y = 338 + index * 152, start = 112, end = 688;
   const stats = laneStats(lane), pending = lane.state === "pending";
   const wrong = lane.calls.filter(call => call.state === "done" && !call.correct);
   if (wrong.length && !reducedMotion.matches) {
     const pulse = Math.max(0, 1 - (now - Math.max(...wrong.map(call => call.finishedAt))) / 350);
     cx.fillStyle = UI.red + "14"; cx.globalAlpha = pulse;
-    cx.fillRect(40, y - 33, 880, 123); cx.globalAlpha = 1;
+    cx.fillRect(24, y - 54, 672, 148); cx.globalAlpha = 1;
   }
-  text(lane.key.toUpperCase(), 48, y - 17, 24, COLOR[lane.key], true, "left", 500);
-  text(`${stats.settled}/4`, 111, y - 18, 12, UI.muted, true);
-  const arrival = stats.arrivalSpan === null ? "—" : Math.round(stats.arrivalSpan);
+  text(lane.key.toUpperCase(), 32, y - 25, 26, COLOR[lane.key], true, "left", 500);
   const elapsed = Math.floor(Math.max(0, now - current.startedAt));
-  text(pending ? `${elapsed} elapsed ms` : `first→last ${arrival} ms rtt`, 190, y - 19, 14, UI.text, true);
   const server = stats.serverSpan === null ? "—" : Math.round(stats.serverSpan);
-  text(`server span ${server} ms${stats.busy ? ` · ${stats.busy} busy` : ""}`, end, y - 19, 14, UI.muted, true, "right");
+  text(`${pending ? elapsed : server} ms`, 360, y - 25, 40, UI.text, true, "center", 500);
+  text(pending ? "elapsed" : "server span", end, y - 25, 16, UI.muted, false, "right");
   line(start, y, end, y, COLOR[lane.key] + "66");
   for (let tick = 0; tick <= 4; tick++) {
     const x = start + (end - start) * tick / 4;
@@ -236,16 +237,16 @@ function drawLane(lane, index, now, scale) {
   // A small pulse at the lane label means active, not simulated completion.
   if (pending) {
     cx.globalAlpha = paused || reducedMotion.matches ? 0.6 : 0.55 + 0.35 * Math.sin(lane.motionMs / 180);
-    dot(64, y, COLOR[lane.key], 3); cx.globalAlpha = 1;
+    dot(46, y, COLOR[lane.key], 3); cx.globalAlpha = 1;
   }
   const ordered = [...lane.calls].sort((a, b) => (a.arrivalOrder || Infinity) - (b.arrivalOrder || Infinity) || a.id - b.id);
   const labels = ordered.map((call, row) => {
-    const labelY = y + 25 + row * 20, color = callColor(call);
-    cx.font = `400 13px ${UI.mono}`;
+    const labelY = y + 25 + row * 22, color = callColor(call);
+    cx.font = `500 16px ${UI.mono}`;
     const label = fitText(callNote(call), end - start - 16), width = cx.measureText(label).width;
     if (call.state !== "done") {
       // Busy/errors have no server receipt: never plot them as zero ms.
-      dot(start - 18, labelY - 4, color, 3);
+      if (call.state !== "pending") dot(start - 18, labelY - 5, color, 3);
       return { label, x: start, y: labelY, width, color };
     }
     const markerX = start + (end - start) * call.serverMs / scale;
@@ -259,54 +260,72 @@ function drawLane(lane, index, now, scale) {
   // Draw labels after every leader so clustered response stems cannot strike
   // through an earlier label. Exact marker positions remain unchanged.
   labels.forEach(({ label, x, y, width, color }) => {
-    cx.fillStyle = UI.bg; cx.fillRect(x - 2, y - 12, width + 4, 16);
-    text(label, x, y, 13, color, true);
+    if (!label) return;
+    cx.fillStyle = UI.bg; cx.fillRect(x - 2, y - 15, width + 4, 19);
+    text(label, x, y, 16, color, true, "left", 500);
   });
-  // Connect each returned category once; the bins retain the per-lane count.
+  // Light/connect categories only when the lane has settled, never predict a
+  // bin from unfinished calls. Different returned choices remain distinct.
   const choices = new Map();
-  lane.calls.filter(call => call.state === "done").forEach(call => choices.set(call.choice, callColor(call)));
+  if (!pending) lane.calls.filter(call => call.state === "done").forEach(call => choices.set(call.choice, callColor(call)));
   choices.forEach((color, choice) => {
-    const bin = LABELS.indexOf(choice), targetX = 150 + bin * 220 + (index ? 5 : -5);
-    const elbowX = index ? 926 : 936, elbowY = index ? 596 : 587;
+    const bin = LABELS.indexOf(choice), targetX = 109.5 + bin * 167 + (index ? 5 : -5);
+    const elbowX = index ? 700 : 708, elbowY = index ? 612 : 605;
     cx.beginPath(); cx.moveTo(end + 5, y); cx.lineTo(elbowX, y); cx.lineTo(elbowX, elbowY);
-    cx.lineTo(targetX, elbowY); cx.lineTo(targetX, 602);
-    cx.strokeStyle = color + "66"; cx.lineWidth = 1.5; cx.stroke();
-    line(targetX - 3, 598, targetX, 602, color); line(targetX + 3, 598, targetX, 602, color);
+    cx.lineTo(targetX, elbowY); cx.lineTo(targetX, 622);
+    cx.strokeStyle = color + "88"; cx.lineWidth = 1.5; cx.stroke();
   });
+}
+function binHighlights(label) {
+  if (!current) return [];
+  return current.lanes.filter(lane => lane.state === "done")
+    .map(lane => ({ key: lane.key, calls: lane.calls.filter(call => call.state === "done" && call.choice === label) }))
+    .filter(lane => lane.calls.length);
+}
+function drawBin(label, index) {
+  const x = 32 + index * 167, y = 622, width = 155, height = 70;
+  const highlights = binHighlights(label), active = highlights.length > 0;
+  // Each settled lane owns an equal share of the fill. Within that share,
+  // actual returned backends own their slices (including mixed fallbacks).
+  if (active) {
+    const laneWidth = width / highlights.length;
+    highlights.forEach((lane, i) => {
+      cx.save(); cx.shadowColor = COLOR[lane.calls[0].receipt.backend]; cx.shadowBlur = 22;
+      cx.fillStyle = cx.shadowColor;
+      cx.beginPath(); cx.roundRect(x + i * laneWidth, y, laneWidth, height, 12); cx.fill(); cx.restore();
+    });
+    cx.save(); cx.beginPath(); cx.roundRect(x, y, width, height, 12); cx.clip();
+    highlights.forEach((lane, i) => lane.calls.forEach((call, j) => {
+      cx.fillStyle = COLOR[call.receipt.backend];
+      cx.fillRect(x + i * laneWidth + j * laneWidth / lane.calls.length, y, laneWidth / lane.calls.length + 0.5, height);
+    }));
+    cx.restore();
+  } else {
+    cx.fillStyle = UI.panel; cx.beginPath(); cx.roundRect(x, y, width, height, 12); cx.fill();
+  }
+  cx.beginPath(); cx.roundRect(x, y, width, height, 12);
+  cx.strokeStyle = highlights.some(lane => lane.calls.some(call => !call.correct)) ? UI.red : active ? "#f0f6fc55" : UI.line;
+  cx.lineWidth = active ? 2 : 1.5; cx.stroke();
+  text(label, x + width / 2, y + 43, 22, active ? UI.bg : UI.muted, false, "center", active ? 750 : 500);
 }
 function draw(now = performance.now()) {
   cx.fillStyle = UI.bg; cx.fillRect(0, 0, W, H);
-  text("jevalaya / burst race", 48, 41, 15, UI.muted, false, "left", 500);
-  text("correct answers · native server p50", 912, 41, 12, UI.muted, false, "right");
+  text("jevalaya / burst race", 32, 42, 20, UI.muted, false, "left", 500);
+  if (paused) text("Paused", 688, 42, 18, UI.text, false, "right");
   BACKENDS.forEach((key, i) => {
-    const x = 48 + i * 440, p50 = median(samples[key]);
-    text(`${key.toUpperCase()} ${scores[key]}`, x, 83, 24, COLOR[key], true, "left", 500);
-    text(`p50 ${p50 === null ? "—" : Math.round(p50)} ms`, x + 169, 81, 16, UI.muted, true);
+    const x = 32 + i * 336, p50 = median(samples[key]);
+    text(`${key.toUpperCase()} ${scores[key]}`, x, 88, 26, COLOR[key], true, "left", 500);
+    text(`p50 ${p50 === null ? "—" : Math.round(p50)} ms`, x + 149, 86, 20, UI.muted, true);
   });
-  line(48, 105, 912, 105);
-  headline(current ? current.text : loadError ? "Could not load articles" : "Waiting for the first headline…");
-  text(loadError || "4 calls per lane · same headline · multilingual · concurrent dispatch", 48, 246, 13, UI.muted);
-  text("Shared admission cap applies · no retries · both adapters serialize model access", 48, 266, 12, UI.muted);
+  headline(current ? current.text : loadError ? `Could not load articles: ${loadError}` : "Waiting for the first headline…");
   const scale = current ? serverScale(current) : 300;
   if (current) current.lanes.forEach((lane, i) => drawLane(lane, i, now, scale));
   else BACKENDS.forEach((key, i) => {
-    const y = 324 + i * 156;
-    text(key.toUpperCase(), 48, y - 17, 24, COLOR[key], true, "left", 500);
-    line(152, y, 912, y);
+    const y = 338 + i * 152;
+    text(key.toUpperCase(), 32, y - 25, 26, COLOR[key], true, "left", 500);
+    line(112, y, 688, y);
   });
-  text(`Markers: server ms · shared scale 0–${scale} · rows: arrival order`, 912, 434, 11, UI.muted, false, "right");
-  LABELS.forEach((label, i) => {
-    const x = 48 + i * 220;
-    cx.beginPath(); cx.roundRect(x, 610, 204, 68, 6);
-    cx.strokeStyle = UI.line; cx.lineWidth = 1.5; cx.stroke();
-    text(label, x + 102, 638, 20, UI.text, false, "center", 500);
-    BACKENDS.forEach((key, j) => {
-      const count = current ? current.lanes[j].calls.filter(call => call.state === "done" && call.choice === label).length : 0;
-      text(`${key.toUpperCase()} ${count}`, x + 29 + j * 83, 660, 12, count ? COLOR[key] : UI.muted, true);
-    });
-  });
-  text(paused ? "Paused · in-flight calls continue" : "Space pause rounds   ·   R reset", 48, 707, 12, UI.muted);
-  text("Fallbacks / escalations excluded from native stats", 912, 707, 11, UI.muted, false, "right");
+  LABELS.forEach(drawBin);
 }
 addEventListener("keydown", e => {
   if (e.repeat) return;
