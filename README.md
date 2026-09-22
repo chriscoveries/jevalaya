@@ -52,7 +52,9 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 *TypeSafe's cloud decision API — you send state and typed questions, it sends back answers from inside your own answer set, with confidence.*
 
-Jev is [TypeSafe](https://typesafe.ai)'s decision model — the one behind their System One API. You don't ask it to write prose. You hand it `state` plus typed questions — `choice`, `score`, `noul` — and it answers *inside your answer set*, with probabilities and a confidence. No generated JSON to parse, no free-text to regex. It's the piece that turns "ask the model" into "ask a question your code can switch on."
+Jev is not a chat LLM — it doesn't generate text. You send it a `state` (any text or JSON: an email, a market snapshot, a tool call an agent wants to run, a whole inbox) plus one or more typed questions, and [TypeSafe](https://typesafe.ai)'s System One model returns calibrated probabilities for every question in a single ~100ms round trip. Your code, not the model, makes the final decision by thresholding on those numbers.
+
+Three primitives, picked by the shape of the question: **noul** — yes/no, returns one probability ("is this urgent?"). **Choice** — pick from known options, returns probabilities over them ("which team handles this?"). **Score** — grade on a rubric, returns a score plus level distribution ("how risky is this?"). No generated JSON to parse, no free-text to regex — it's the piece that turns "ask the model" into "ask a question your code can switch on." There's an interactive playground at [jev-explained](https://jev-explained-repo.vercel.app/) — bring your own TypeSafe or Vercel AI Gateway key.
 
 Laya is the open-weight sibling of the same idea — the same typed-decision contract, running as a local encoder instead of a paid endpoint. jevalaya sits between the two: same `/predict` shape in, Laya on your silicon when it'll do, Jev when it won't.
 
