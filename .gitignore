@@ -18,3 +18,8 @@ tools/bench/jevalaya.bench.toml
 tools/bench/jevalaya.jev.toml
 tools/bench/jevalaya.jev-local.toml
 tools/bench/jevalaya.fb.toml
+# ANE export conversion env (T027): dedicated venv, never committed
+.venv-export/
+# Demo local config (token): example committed, real one ignored
+tools/demo/dino/config.js
+tools/demo/sorter/config.js

@@ -20,6 +20,8 @@ Laissez les bons temps rouler, cher — this here's a fast little router for you
 
 Real terminal, real server — five beats: health, ANE on a short request, ANE on English (fit decides, not the detector), multi-question MLX, explicit Jev escalation, and a consumer verdict into `/feedback`.
 
+**Want to watch the router think?** [The sorter demo](docs/assets/sorter-demo.mp4) is a little arcade game that lives entirely on `/predict`: headlines fall toward four bins, and every card is one live call — short headlines hit ANE, full articles route MLX, one scripted golden headline phones Jev, and a lag switch shows what a slow backend would cost you. The overlay is the raw routing receipt. Source in [`tools/demo/sorter/`](tools/demo/sorter/).
+
 ## Quick start
 
 ```bash

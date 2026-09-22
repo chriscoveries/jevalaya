@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>jevalaya sorter — every card is a live routing decision</title>
+<style>
+  html, body { margin: 0; background: #111; height: 100%; overflow: hidden; }
+  #wrap { width: 1280px; margin: 0 auto; }
+  canvas { display: block; background: #f7f7f7; }
+  #hint { color: #888; font: 13px monospace; text-align: center; padding: 6px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="1280" height="720"></canvas></div>
+<div id="hint">SPACE pause &nbsp; L lag-switch (+500ms) &nbsp; G golden item (1 scripted Jev call) &nbsp; R restart &nbsp; ?autostart=1&amp;token=… for capture</div>
+<script src="config.js"></script>
+<script src="sorter.js"></script>
+</body>
+</html>
