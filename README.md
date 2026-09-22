@@ -2,7 +2,11 @@
 
 # Keep calling Jev. Most of it never leaves the Mac.
 
+*"But we have Jev at home?" — yeah, and it answers in ~18ms.*
+
 Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust house band for Apple Silicon: short calls hit the Neural Engine, roomier ones ride local MLX, and Jev (TypeSafe) only gets the ticket when confidence/margin say it earned it. Every response carries a routing receipt — backend, latency, reason. Laissez les bons temps rouler.
+
+<p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
 ## See it work
 
@@ -40,11 +44,11 @@ Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust hous
 
 `backend: jev` `ms: server-reported` `reason: … escalated to jev`
 
-*real Jev escalation on camera; paid cloud, named reason, same /predict.*
+*real Jev API calls on camera — key from Infisical, paid cloud, named reason, same /predict.*
 
-<p align="center"><img src="docs/assets/demo.gif" alt="live terminal demo: /predict routing to ANE, MLX, and Jev, plus /feedback" width="900"></p>
+<p align="center"><img src="docs/assets/jev-demo.gif" alt="terminal: two explicit backend=jev calls (931ms, 366ms) and one low-confidence auto-escalation answered by Jev" width="900"></p>
 
-[Inspect the recorded receipts](docs/assets/demo.cast)
+[Inspect the recorded receipts](docs/assets/jev-demo.cast) · [full routing demo (GIF)](docs/assets/demo.gif) · [cast](docs/assets/demo.cast)
 
 <details>
 <summary>Timing and accuracy, in context</summary>
@@ -59,8 +63,6 @@ Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust hous
 
 ## What it does
 
-<p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
-
 - `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
 - Routes by content: checkpoint family (english / multilingual / typed-decisions), rendered token count, and confidence — with a fallback hop from ANE to MLX and an escalation hop from local to Jev.
 - Degrades graceful: runs fine on three backends, two, or just one — whatever's standin' is what you get, always with the full routing receipt.
@@ -71,7 +73,7 @@ Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust hous
 
 ## Quick start
 
-Grab the prebuilt binary from [Releases](https://github.com/eafire15/jevalaya/releases) (`jevalaya-v0.1.0-macos-aarch64.tar.gz` — Apple Silicon), or build from source:
+Grab the prebuilt binary from [Releases](https://github.com/chriscoveries/jevalaya/releases) (`jevalaya-v0.1.0-macos-aarch64.tar.gz` — Apple Silicon), or build from source:
 
 ```bash
 cargo build --workspace
