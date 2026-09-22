@@ -84,8 +84,8 @@ curl -s http://127.0.0.1:8767/predict \
 
 - ANE only gets short, single questions that fit the exported CoreML head (≤96 rendered tokens) — english and multilingual both ride the Neural Engine when the fit gate passes. Fit decides, not the language detector.
 - An ANE capacity/shape failure retries exactly once on MLX. A hard failure stays visible — we don't dress it up as an answer.
-- Jev fires when you ask for it, when confidence runs too close, or on retry. It's the only path that leaves the machine.
-- Keys live in your environment — never in this repo.
+- Jev (the paid cloud API) only gets called in three cases: you explicitly ask for it (`backend: "jev"`), the local answer isn't confident enough to trust, or a local attempt fails and the router retries upward. It's the only path that ever leaves your Mac — and the receipt on every response says which backend answered and why, so a Jev call can never happen silently.
+- Keys live in your environment variables, never in this repo.
 
 ## Layout
 
