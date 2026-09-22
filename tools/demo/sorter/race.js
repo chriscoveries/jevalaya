@@ -1,6 +1,6 @@
 "use strict";
-// Two identical classification requests, not a synthesized timing comparison.
-// Marker crawl indicates activity, never an estimate of inference progress.
+// Eight identical asks, four per backend. No retries, staggering, or fabricated timings.
+// Dispatch concurrency is not admission concurrency (browser/server limits still apply).
 const Q = new URLSearchParams(location.search);
 const CFG = Object.assign({ url: "", token: "" }, window.JEVALAYA || {});
 if (Q.get("url")) CFG.url = Q.get("url");
@@ -8,7 +8,7 @@ if (Q.get("token")) CFG.token = Q.get("token");
 const API = (CFG.url || "") + "/predict";
 const ITEMS = (CFG.url || "") + "/items?limit=200&offset=0";
 const cv = document.getElementById("race"), cx = cv.getContext("2d");
-const W = 960, H = 720, HOLD_MS = 1000, REQUEST_TIMEOUT_MS = 30000;
+const W = 960, H = 720, BURST_SIZE = 4, HOLD_MS = 1000, REQUEST_TIMEOUT_MS = 30000;
 const LABELS = ["World", "Sports", "Business", "Sci/Tech"];
 const BACKENDS = ["ane", "mlx"];
 const COLOR = { ane: "#58a6ff", mlx: "#3fb950", jev: "#d29922" };
@@ -58,63 +58,93 @@ function startRound() {
   const row = queue.shift(); queue.push(row);
   const round = {
     generation, number: ++roundNumber, row, text: headlineOf(row.text),
-    firstReply: null, holdRemaining: null,
-    lanes: BACKENDS.map(key => ({ key, state: "pending", motionMs: 0, receipt: null, error: "" })),
+    firstReply: null, holdRemaining: null, settledCount: 0, startedAt: performance.now(),
+    lanes: BACKENDS.map(key => ({ key, state: "pending", motionMs: 0,
+      calls: Array.from({ length: BURST_SIZE }, (_, index) => ({
+        key, id: index + 1, state: "pending", receipt: null, error: "",
+      })),
+    })),
   };
   current = round;
-  // No await between dispatches: both POSTs are outstanding at the same time.
-  round.lanes.forEach(lane => dispatchLane(round, lane));
+  // Interleave lanes; alternate who is launched first each round. All eight
+  // fetches start in this turn, but neither HTTP/1 nor the shared cap promises
+  // eight admitted requests. Do not hide a 429 by silently retrying it.
+  const order = round.number % 2 ? round.lanes : [...round.lanes].reverse();
+  for (let index = 0; index < BURST_SIZE; index++) {
+    order.forEach(lane => dispatchCall(round, lane, lane.calls[index]));
+  }
 }
 function isCurrent(round) { return generation === round.generation && current === round; }
-function dispatchLane(round, lane) {
+function dispatchCall(round, lane, call) {
   const body = {
     state: round.text,
     questions,
     backend: lane.key,
     model: "multilingual",
-    request_id: `race-${round.generation}-${round.number}-${lane.key}`,
+    request_id: `race-${round.generation}-${round.number}-${lane.key}-${call.id}`,
   };
   const controller = new AbortController(); controllers.add(controller);
   let timedOut = false;
   const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
-  const t0 = performance.now(); lane.startedAt = t0;
+  const t0 = performance.now(); call.startedAt = t0;
   fetch(API, { method: "POST",
     headers: { "Authorization": "Bearer " + CFG.token, "Content-Type": "application/json" },
     body: JSON.stringify(body), signal: controller.signal })
-    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(r => {
+      if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+      return r.json();
+    })
     .then(data => {
       if (!isCurrent(round)) return;
       const ans = data.answers?.topic, route = data.routing;
       if (!ans || !LABELS.includes(ans.choice) || !route || !Object.hasOwn(COLOR, route.backend)
           || !Number.isFinite(route.latency_ms) || route.latency_ms < 0) throw new Error("Invalid receipt");
-      lane.receipt = { backend: route.backend, ms: Math.round(route.latency_ms),
+      call.receipt = { backend: route.backend, ms: Math.round(route.latency_ms),
                        conf: ans.confidence, ckpt: route.checkpoint || "—" };
-      lane.serverMs = route.latency_ms;
-      lane.choice = ans.choice;
-      lane.correct = ans.choice === round.row.label;
-      lane.escalated = !!route.escalated || route.backend === "jev";
-      lane.escalationError = !!route.escalation_error;
-      lane.fallback = !!route.fallback || (!lane.escalated && route.backend !== lane.key);
-      lane.native = route.backend === lane.key && route.checkpoint === "multilingual"
-        && !lane.fallback && !lane.escalated;
-      lane.finishedAt = performance.now(); lane.rtt = lane.finishedAt - t0;
-      lane.state = "done";
+      call.serverMs = route.latency_ms;
+      call.choice = ans.choice;
+      call.correct = ans.choice === round.row.label;
+      call.escalated = !!route.escalated || route.backend === "jev";
+      call.escalationError = !!route.escalation_error;
+      call.fallback = !!route.fallback || (!call.escalated && route.backend !== lane.key);
+      call.native = route.backend === lane.key && route.checkpoint === "multilingual"
+        && !call.fallback && !call.escalated;
+      call.state = "done";
       if (!round.firstReply) round.firstReply = lane.key;
       // Rerouted requests remain visible, but are not ANE/MLX hardware samples.
-      if (lane.native) {
-        if (lane.correct) scores[lane.key]++;
-        samples[lane.key].push(lane.serverMs);
+      if (call.native) {
+        if (call.correct) scores[lane.key]++;
+        samples[lane.key].push(call.serverMs);
       }
     })
     .catch(error => {
       if (!isCurrent(round)) return;
-      lane.state = "error"; lane.finishedAt = performance.now(); lane.rtt = lane.finishedAt - t0;
-      lane.error = timedOut ? "Timed out" : error.name === "AbortError" ? "Cancelled" : error.message;
+      call.state = error.status === 429 ? "busy" : "error";
+      call.error = timedOut ? "Timed out" : error.name === "AbortError" ? "Cancelled" : error.message;
     })
     .finally(() => {
       clearTimeout(timeout); controllers.delete(controller);
-      if (isCurrent(round) && round.lanes.every(other => other.state !== "pending")) round.holdRemaining = HOLD_MS;
+      if (!isCurrent(round)) return;
+      call.finishedAt = performance.now(); call.rtt = call.finishedAt - t0;
+      call.arrivalOrder = ++round.settledCount;
+      lane.state = lane.calls.every(other => other.state !== "pending") ? "done" : "pending";
+      if (round.lanes.every(other => other.state !== "pending")) round.holdRemaining = HOLD_MS;
     });
+}
+function span(values) { return values.length < 2 ? null : Math.max(...values) - Math.min(...values); }
+function laneStats(lane) {
+  const settled = lane.calls.filter(call => call.state !== "pending");
+  const measured = settled.filter(call => call.state === "done");
+  return { settled: settled.length, measured: measured.length,
+    busy: settled.filter(call => call.state === "busy").length,
+    serverSpan: span(measured.map(call => call.serverMs)),
+    arrivalSpan: span(settled.map(call => call.finishedAt)),
+  };
+}
+function serverScale(round) {
+  const max = Math.max(300, ...round.lanes.flatMap(lane => lane.calls.map(call => call.serverMs || 0)));
+  const step = 10 ** Math.floor(Math.log10(max));
+  return Math.ceil(max / step) * step;
 }
 function median(values) {
   if (!values.length) return null;
@@ -165,50 +195,88 @@ function headline(value) {
   if (row) lines.push(row);
   lines.slice(0, 3).forEach((value, i) => cx.fillText(fitText(value + (i === 2 && lines.length > 3 ? " …" : ""), 864), 48, 148 + i * 36));
 }
-function laneNote(lane) {
-  if (lane.state === "pending") return "waiting";
-  if (lane.state === "error") return lane.error;
-  const actual = lane.receipt.backend.toUpperCase();
-  const identity = lane.native ? "" : [actual,
-    lane.fallback ? "fallback" : "",
-    lane.escalated ? `escalated→jev${lane.escalationError ? " failed" : ""}` : "",
-    !lane.fallback && !lane.escalated ? `checkpoint ${lane.receipt.ckpt}` : "",
+function callNote(call) {
+  if (call.state === "pending") return `#${call.id} waiting`;
+  if (call.state === "busy") return `#${call.id} busy · HTTP 429 · no server ms`;
+  if (call.state === "error") return `#${call.id} ${call.error} · no server ms`;
+  const actual = call.receipt.backend.toUpperCase();
+  const identity = call.native ? "" : [actual,
+    call.fallback ? "fallback" : "",
+    call.escalated ? `escalated→jev${call.escalationError ? " failed" : ""}` : "",
+    !call.fallback && !call.escalated ? `checkpoint ${call.receipt.ckpt}` : "",
   ].filter(Boolean).join(" · ");
-  return [identity, lane.choice, lane.correct ? "correct" : "wrong"].filter(Boolean).join(" · ");
+  return [`#${call.id} ${call.receipt.ms} ms`, identity, call.choice, call.correct ? "correct" : "wrong"].filter(Boolean).join(" · ");
 }
-function drawLane(lane, index, now) {
-  const y = 350 + index * 132, start = 152, end = 870, mid = (start + end) / 2;
-  const completed = lane.state !== "pending";
-  const wrong = lane.state === "done" && !lane.correct;
-  const color = wrong || lane.state === "error" ? UI.red : lane.receipt ? COLOR[lane.receipt.backend] : COLOR[lane.key];
-  if (wrong && !reducedMotion.matches) {
-    const pulse = Math.max(0, 1 - (now - lane.finishedAt) / 350);
+function callColor(call) {
+  if (call.state === "pending" || call.state === "busy") return UI.muted;
+  if (call.state === "error" || !call.correct) return UI.red;
+  return COLOR[call.receipt.backend];
+}
+function drawLane(lane, index, now, scale) {
+  const y = 324 + index * 156, start = 152, end = 912;
+  const stats = laneStats(lane), pending = lane.state === "pending";
+  const wrong = lane.calls.filter(call => call.state === "done" && !call.correct);
+  if (wrong.length && !reducedMotion.matches) {
+    const pulse = Math.max(0, 1 - (now - Math.max(...wrong.map(call => call.finishedAt))) / 350);
     cx.fillStyle = UI.red + "14"; cx.globalAlpha = pulse;
-    cx.fillRect(40, y - 63, 840, 104); cx.globalAlpha = 1;
+    cx.fillRect(40, y - 33, 880, 123); cx.globalAlpha = 1;
   }
-  text(lane.key.toUpperCase(), 48, y + 8, 24, COLOR[lane.key], true, "left", 500);
-  line(start, y, end, y, color + "66");
-  const progress = completed ? 1 : reducedMotion.matches ? 0 : 0.88 * (1 - Math.exp(-lane.motionMs / 1800));
-  dot(start + (end - start) * progress, y, color, 6);
-  const ms = lane.state === "done" ? lane.receipt.ms : lane.state === "pending" ? Math.floor(Math.max(0, now - lane.startedAt)) : "—";
-  text(ms, mid, y - 16, 38, lane.state === "error" ? UI.muted : UI.text, true, "center", 500);
-  text(lane.state === "pending" ? "elapsed ms" : "server ms", mid, y + 27, 13, UI.muted, true, "center");
-  if (completed) text(`rtt ${Math.round(lane.rtt)} ms`, end, y + 27, 12, UI.muted, true, "right");
-  cx.font = `400 13px ${UI.sans}`;
-  text(fitText(laneNote(lane), 550), start, y - 58, 13, wrong || lane.state === "error" ? UI.red : lane.native === false ? COLOR.jev : UI.muted);
-  if (current.firstReply === lane.key) text("first reply", end, y - 58, 12, UI.muted, false, "right");
-  if (lane.state === "done") {
-    const bin = LABELS.indexOf(lane.choice), targetX = 150 + bin * 220 + (index ? 5 : -5);
-    const elbowX = index ? 894 : 914, elbowY = index ? 577 : 557;
-    cx.beginPath(); cx.moveTo(end, y); cx.lineTo(elbowX, y); cx.lineTo(elbowX, elbowY);
+  text(lane.key.toUpperCase(), 48, y - 17, 24, COLOR[lane.key], true, "left", 500);
+  text(`${stats.settled}/4`, 111, y - 18, 12, UI.muted, true);
+  const arrival = stats.arrivalSpan === null ? "—" : Math.round(stats.arrivalSpan);
+  const elapsed = Math.floor(Math.max(0, now - current.startedAt));
+  text(pending ? `${elapsed} elapsed ms` : `first→last ${arrival} ms rtt`, 190, y - 19, 14, UI.text, true);
+  const server = stats.serverSpan === null ? "—" : Math.round(stats.serverSpan);
+  text(`server span ${server} ms${stats.busy ? ` · ${stats.busy} busy` : ""}`, end, y - 19, 14, UI.muted, true, "right");
+  line(start, y, end, y, COLOR[lane.key] + "66");
+  for (let tick = 0; tick <= 4; tick++) {
+    const x = start + (end - start) * tick / 4;
+    line(x, y - 4, x, y + 4, UI.line);
+  }
+  // A small pulse at the lane label means active, not simulated completion.
+  if (pending) {
+    cx.globalAlpha = paused || reducedMotion.matches ? 0.6 : 0.55 + 0.35 * Math.sin(lane.motionMs / 180);
+    dot(64, y, COLOR[lane.key], 3); cx.globalAlpha = 1;
+  }
+  const ordered = [...lane.calls].sort((a, b) => (a.arrivalOrder || Infinity) - (b.arrivalOrder || Infinity) || a.id - b.id);
+  const labels = ordered.map((call, row) => {
+    const labelY = y + 25 + row * 20, color = callColor(call);
+    cx.font = `400 13px ${UI.mono}`;
+    const label = fitText(callNote(call), end - start - 16), width = cx.measureText(label).width;
+    if (call.state !== "done") {
+      // Busy/errors have no server receipt: never plot them as zero ms.
+      dot(start - 18, labelY - 4, color, 3);
+      return { label, x: start, y: labelY, width, color };
+    }
+    const markerX = start + (end - start) * call.serverMs / scale;
+    const labelX = Math.max(start, Math.min(markerX + 10, end - width));
+    const leaderX = labelX >= markerX ? labelX - 4 : labelX + width + 4;
+    line(markerX, y + 8, markerX, labelY - 5, color + "55", 1);
+    line(markerX, labelY - 5, leaderX, labelY - 5, color + "55", 1);
+    dot(markerX, y, color, 4);
+    return { label, x: labelX, y: labelY, width, color };
+  });
+  // Draw labels after every leader so clustered response stems cannot strike
+  // through an earlier label. Exact marker positions remain unchanged.
+  labels.forEach(({ label, x, y, width, color }) => {
+    cx.fillStyle = UI.bg; cx.fillRect(x - 2, y - 12, width + 4, 16);
+    text(label, x, y, 13, color, true);
+  });
+  // Connect each returned category once; the bins retain the per-lane count.
+  const choices = new Map();
+  lane.calls.filter(call => call.state === "done").forEach(call => choices.set(call.choice, callColor(call)));
+  choices.forEach((color, choice) => {
+    const bin = LABELS.indexOf(choice), targetX = 150 + bin * 220 + (index ? 5 : -5);
+    const elbowX = index ? 926 : 936, elbowY = index ? 596 : 587;
+    cx.beginPath(); cx.moveTo(end + 5, y); cx.lineTo(elbowX, y); cx.lineTo(elbowX, elbowY);
     cx.lineTo(targetX, elbowY); cx.lineTo(targetX, 602);
-    cx.strokeStyle = color + "aa"; cx.lineWidth = 1.5; cx.stroke();
+    cx.strokeStyle = color + "66"; cx.lineWidth = 1.5; cx.stroke();
     line(targetX - 3, 598, targetX, 602, color); line(targetX + 3, 598, targetX, 602, color);
-  }
+  });
 }
 function draw(now = performance.now()) {
   cx.fillStyle = UI.bg; cx.fillRect(0, 0, W, H);
-  text("jevalaya / head-to-head", 48, 41, 15, UI.muted, false, "left", 500);
+  text("jevalaya / burst race", 48, 41, 15, UI.muted, false, "left", 500);
   text("correct answers · native server p50", 912, 41, 12, UI.muted, false, "right");
   BACKENDS.forEach((key, i) => {
     const x = 48 + i * 440, p50 = median(samples[key]);
@@ -217,18 +285,25 @@ function draw(now = performance.now()) {
   });
   line(48, 105, 912, 105);
   headline(current ? current.text : loadError ? "Could not load articles" : "Waiting for the first headline…");
-  text(loadError || "Same headline · multilingual checkpoint · concurrent requests", 48, 254, 13, UI.muted);
-  if (current) current.lanes.forEach((lane, i) => drawLane(lane, i, now));
+  text(loadError || "4 calls per lane · same headline · multilingual · concurrent dispatch", 48, 246, 13, UI.muted);
+  text("Shared admission cap applies · no retries · both adapters serialize model access", 48, 266, 12, UI.muted);
+  const scale = current ? serverScale(current) : 300;
+  if (current) current.lanes.forEach((lane, i) => drawLane(lane, i, now, scale));
   else BACKENDS.forEach((key, i) => {
-    const y = 350 + i * 132;
-    text(key.toUpperCase(), 48, y + 8, 24, COLOR[key], true, "left", 500);
-    line(152, y, 870, y); dot(152, y, COLOR[key]);
+    const y = 324 + i * 156;
+    text(key.toUpperCase(), 48, y - 17, 24, COLOR[key], true, "left", 500);
+    line(152, y, 912, y);
   });
+  text(`Markers: server ms · shared scale 0–${scale} · rows: arrival order`, 912, 434, 11, UI.muted, false, "right");
   LABELS.forEach((label, i) => {
     const x = 48 + i * 220;
     cx.beginPath(); cx.roundRect(x, 610, 204, 68, 6);
     cx.strokeStyle = UI.line; cx.lineWidth = 1.5; cx.stroke();
-    text(label, x + 102, 652, 21, UI.text, false, "center", 500);
+    text(label, x + 102, 638, 20, UI.text, false, "center", 500);
+    BACKENDS.forEach((key, j) => {
+      const count = current ? current.lanes[j].calls.filter(call => call.state === "done" && call.choice === label).length : 0;
+      text(`${key.toUpperCase()} ${count}`, x + 29 + j * 83, 660, 12, count ? COLOR[key] : UI.muted, true);
+    });
   });
   text(paused ? "Paused · in-flight calls continue" : "Space pause rounds   ·   R reset", 48, 707, 12, UI.muted);
   text("Fallbacks / escalations excluded from native stats", 912, 707, 11, UI.muted, false, "right");

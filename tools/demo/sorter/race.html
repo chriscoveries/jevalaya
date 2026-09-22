@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>jevalaya — ANE vs MLX</title>
+<title>jevalaya — ANE vs MLX burst</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; background: #0d1117; color: #f0f6fc; }
@@ -15,8 +15,8 @@
 </style>
 </head>
 <body>
-<main><canvas id="race" width="960" height="720" role="img" aria-label="ANE versus MLX: concurrent news classification on the same multilingual checkpoint." aria-describedby="help">Use a browser with Canvas support.</canvas></main>
-<p id="help">Each round sends the same headline to ANE and MLX concurrently. Waiting counters show elapsed milliseconds; completed counters show server-reported milliseconds, with round-trip time separately labeled rtt. Score counts correct native answers. Fallbacks and escalations are labeled and excluded from native score and p50. Space pauses new rounds; in-flight calls continue. R resets.</p>
+<main><canvas id="race" width="960" height="720" role="img" aria-label="ANE versus MLX: four requests per lane on the same multilingual checkpoint." aria-describedby="help">Use a browser with Canvas support.</canvas></main>
+<p id="help">Each round dispatches eight requests without awaiting responses: four per backend, all using the same headline and multilingual checkpoint. Browser connection limits and the server's shared admission limit can reduce actual concurrency. No requests are retried. Markers use server-reported milliseconds on a shared scale; label rows appear in response-arrival order. Busy and error results have no server timing and stay off the timing line. Server span is maximum minus minimum reported latency; first-to-last rtt is the browser-observed interval between the first and last settled request, including busy and errors. A one-result span is unavailable. Score counts correct native answers. Fallbacks and escalations are labeled and excluded from native score and p50. Space pauses new rounds and activity motion; in-flight calls continue. R resets and ignores stale replies.</p>
 <script src="config.js"></script>
 <script src="race.js"></script>
 </body>
