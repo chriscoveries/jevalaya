@@ -6,7 +6,17 @@ One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where
 
 <p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
-## What it does, in plain English
+## What it does
+
+- `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
+- Routes by content: checkpoint family (english / multilingual / typed-decisions), rendered token count, and confidence — with a fallback hop from ANE to MLX and an escalation hop from local to Jev.
+- Degrades graceful: runs fine on three backends, two, or just one — whatever's standin' is what you get, always with the full routing receipt.
+- Every request writes a structured event (latency, backend, confidence, cost) to a JSONL stream — that's the lagniappe a future lil' app can visualize.
+- Compare mode: ask for `compare=["ane","mlx","jev"]` and get every backend's answer side by side.
+
+**Point it at your models, keep TYPESAFE_API_KEY for the ones that earn the ride, keep POSTing /predict. Same Jev. Smarter pots.**
+
+## ELI12
 
 Every request goes to one of three places. jevalaya picks the cheapest one that can handle it:
 
@@ -43,15 +53,17 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 </details>
 
-## What it does
+## How do I use it
 
-- `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
-- Routes by content: checkpoint family (english / multilingual / typed-decisions), rendered token count, and confidence — with a fallback hop from ANE to MLX and an escalation hop from local to Jev.
-- Degrades graceful: runs fine on three backends, two, or just one — whatever's standin' is what you get, always with the full routing receipt.
-- Every request writes a structured event (latency, backend, confidence, cost) to a JSONL stream — that's the lagniappe a future lil' app can visualize.
-- Compare mode: ask for `compare=["ane","mlx","jev"]` and get every backend's answer side by side.
+You POST `state` and `questions`, jevalaya returns typed answers plus the routing receipt — so anything that can speak the predict contract works. Folks are already building on Jev:
 
-**Point it at your models, keep TYPESAFE_API_KEY for the ones that earn the ride, keep POSTing /predict. Same Jev. Smarter pots.**
+- [jev](https://github.com/anilsenay/jev) (Go, unofficial) — ask Jev questions and get answers back as your own Go types; the compiler checks your `switch`, not just the JSON.
+- [jev-router](https://github.com/Akashdb5/jev-router) (Python) — Jev-powered security screening and cost-aware routing across OpenAI, Anthropic, and OpenRouter models.
+- [Predict-With-Jev](https://github.com/Protocol-Lattice/Predict-With-Jev) — a crypto market research dashboard that runs forecasts and walk-forward evaluation through Jev's System One API.
+- [pi-jev-router](https://pi.dev/packages/pi-jev-router) — lets Jev pick a model and reasoning effort for the Pi coding agent.
+- [pi-typesafe-router](https://pi.dev/packages/pi-typesafe-router) — Jev classifies Pi requests and routes them across TypeSafe, Cloudflare, Vercel, and OpenRouter backends.
+
+Point your own project at `http://127.0.0.1:8767/predict` instead of Jev's endpoint and the same calls get answered locally first — your agent code doesn't change, your bill does. The full contract is in `docs/CONSUMER-HANDOVER.md`.
 
 ## Quick start
 
