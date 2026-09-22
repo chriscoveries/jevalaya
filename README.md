@@ -51,6 +51,12 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 **You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
 
+## What is Jev
+
+Jev is [TypeSafe](https://typesafe.ai)'s decision model — the one behind their System One API. You don't ask it to write prose. You hand it `state` plus typed questions — `choice`, `score`, `noul` — and it answers *inside your answer set*, with probabilities and a confidence. No generated JSON to parse, no free-text to regex. It's the piece that turns "ask the model" into "ask a question your code can switch on."
+
+Laya is the open-weight sibling of the same idea — the same typed-decision contract, running as a local encoder instead of a paid endpoint. jevalaya sits between the two: same `/predict` shape in, Laya on your silicon when it'll do, Jev when it won't.
+
 ## How do I use it
 
 You POST `state` and `questions`, jevalaya returns typed answers plus the routing receipt — so anything that can speak the predict contract works. Folks are already building on Jev:
@@ -164,6 +170,17 @@ Any project on the machine can ask jevalaya a question — define your `state` a
 ## Status
 
 Routing core, CoreML ANE adapter, MLX bridge, and Jev client verified end-to-end — all three backends answer live in the demos above. See `docs/DESIGN.md` for the full contract.
+
+## Credits
+
+jevalaya is a router — the brains belong to other people:
+
+- **[Laya](https://github.com/NandhaKishorM/laya)** — the open-weight typed-decision models and original implementation, by [Convai Innovations](https://huggingface.co/convaiinnovations) and contributors (Apache-2.0). English, multilingual, and typed-decisions checkpoints.
+- **[laya-mlx](https://github.com/mizorewww/laya-mlx)** — the native MLX port for Apple silicon (`aac6fef/*-mlx` on the hub). Our GPU lane is this package embedded over PyO3.
+- **[laya-coreml](https://github.com/mizorewww/laya-coreml)** — the Core ML / Neural Engine bundles (`aac6fef/*-coreml*`). Our ANE lane runs the `-ane` variant.
+- **[TypeSafe](https://typesafe.ai)** — Jev and the System One API jevalaya escalates to.
+
+Both Apple conversions are independent ports, not official Convai or Apple releases — all credit to the porters, all model behavior to the original checkpoints.
 
 ## More from the workshop
 
