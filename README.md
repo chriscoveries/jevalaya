@@ -33,6 +33,8 @@ One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where
 
 ## What it does
 
+*The same API, on your Mac — the Neural Engine fires 20–30 answers inside one Jev roundtrip, and Jev is still there for the 1-in-50 call that earns it.*
+
 - `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
 - Routes by content: checkpoint family (english / multilingual / typed-decisions), rendered token count, and confidence — with a fallback hop from ANE to MLX and an escalation hop from local to Jev.
 - Degrades graceful: runs fine on three backends, two, or just one — whatever's standin' is what you get, always with the full routing receipt.
@@ -52,6 +54,8 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 **You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
 
 ## What is Jev
+
+*TypeSafe's cloud decision API — you send state and typed questions, it sends back answers from inside your own answer set, with confidence.*
 
 Jev is [TypeSafe](https://typesafe.ai)'s decision model — the one behind their System One API. You don't ask it to write prose. You hand it `state` plus typed questions — `choice`, `score`, `noul` — and it answers *inside your answer set*, with probabilities and a confidence. No generated JSON to parse, no free-text to regex. It's the piece that turns "ask the model" into "ask a question your code can switch on."
 
