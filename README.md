@@ -22,6 +22,8 @@ Real terminal, real server — five beats: health, ANE on a short request, ANE o
 
 **Want to watch the router think?** [The snake demo](docs/assets/snake-demo.mp4) is a little arcade game that lives entirely on `/predict`: a headline appears, the model classifies it, and the snake slithers to the bin the router chose — short headlines hit ANE, full articles route MLX, one scripted golden headline phones Jev, and a lag switch shows what a slow backend costs. The overlay is the raw routing receipt; the snake is presentation, not steering — the model picks the topic, the snake follows. Source in [`tools/demo/sorter/`](tools/demo/sorter/).
 
+**Or watch the backends race:** [the head-to-head demo](docs/assets/race-demo.mp4) fires the same headline at ANE and MLX concurrently — two lanes, the server's own millisecond receipt in the middle of each line, score and p50 up top. Same checkpoint on both sides, so it's a pure lane race. Source: `race.html`/`race.js` in the same directory.
+
 ## Quick start
 
 ```bash
