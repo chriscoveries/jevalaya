@@ -15,8 +15,8 @@ Keep consumer-specific logic and project names out of the implementation. The RE
 - Expose a drop-in local HTTP prediction endpoint for the laya-mlx server contract, while accepting the Jev/TypeSafe request shape where it is compatible.
 - Route among native CoreML ANE, native MLX Laya through an in-process PyO3 bridge for v1, and Jev through an HTTP client.
 - Keep the fast local route free of network calls. Jev is the only inference path that deliberately leaves the machine.
-- English and typed-decisions checkpoints never execute on ANE.
-- ANE is only an optimization: a multilingual, one-question request whose fully rendered, model-tokenized input fits the aligned 96-token limit.
+- Typed-decisions checkpoints never execute on ANE. An explicitly pinned non-multilingual checkpoint (model=/task=) never executes on ANE either — the pin names weights the bundle does not have.
+- ANE is only an optimization: a one-question request whose fully rendered input, tokenized with the ANE bundle's own tokenizer, fits the aligned 96-token limit. Fit — not detected language — selects the multilingual checkpoint for ANE dispatch (T023): explicit model/task pins still win, while lang= is a detection hint that fit may override.
 - A capacity/shape failure may trigger exactly one MLX retry. A hard failure must be visible; it must not be disguised as a different answer.
 - No PyTorch or Transformers inference runtime is used. The only embedded Python is a thin PyO3 bridge to the existing laya-mlx package; the primary MLX path has no process or socket hop. Native mlx-rs may replace that bridge later.
 - Local model directories work offline. A path-like missing directory is an error, not a reason to silently contact Hugging Face.
@@ -342,10 +342,11 @@ The router has a pure decision phase followed by execution/escalation. No weight
 4. ANE eligibility requires all of:
    - ane enabled/configured and macOS arm64;
    - native ANE backend, model, tokenizer, and capabilities available;
-   - selected checkpoint Multilingual and request not typed;
+   - request not typed-decisions, and no explicit model/task pin to a non-multilingual checkpoint;
    - exactly one question;
    - prefer_ane_for_short or explicit ANE intent;
    - aligned_count <= configured `ane.max_tokens` (default 96) and native fixed input length.
+   When every content/shape gate holds and no model/task pin applies, fit overrides the detected-language checkpoint: the request dispatches checkpoint=multilingual → ANE with reason ane_fit_multilingual (the detector's verdict stays in the reason detail). Detected language still selects the checkpoint only for requests that do not fit ANE, and for backend=mlx where fit informs ane_eligible but not checkpoint choice. An ANE-down or prefer-off fit request keeps the multilingual checkpoint on the MLX fallback.
    Any failed gate produces MLX with stable reason prefixes such as ane_disabled, platform_unsupported, ane_unavailable, not_multilingual, typed_decisions, question_count, or token_count_over_limit.
 5. MLX default sends the request to the in-process PyO3 bridge with the already selected checkpoint/model. The bridge must not reroute it differently. A loopback sidecar is a documented opt-in fallback only.
 6. ANE runtime fallback invokes one CoreML agent. Only ANECapacity or ANEShape releases/resets ANE and retries once on MLX using the same Multilingual checkpoint. Returned metadata has backend=mlx, fallback=true, fallback_from=ane, MLX model_id, original token_count, and ane_eligible=true. Hard ANE errors never retry.
