@@ -20,9 +20,13 @@ Laissez les bons temps rouler, cher — this here's a fast little router for you
 
 Real terminal, real server — five beats: health, ANE on a short request, ANE on English (fit decides, not the detector), multi-question MLX, explicit Jev escalation, and a consumer verdict into `/feedback`.
 
+<p align="center"><a href="docs/assets/snake-demo.mp4"><img src="docs/assets/snake-demo-poster.png" alt="Watch the snake routing demo (MP4): a live ANE receipt and the snake following the selected topic" width="900"></a></p>
+
 **Want to watch the router think?** [The snake demo](docs/assets/snake-demo.mp4) is a little arcade game that lives entirely on `/predict`: a headline appears, the model classifies it, and the snake slithers to the bin the router chose — short headlines hit ANE, full articles route MLX, one scripted golden headline phones Jev, and a lag switch shows what a slow backend costs. The overlay is the raw routing receipt; the snake is presentation, not steering — the model picks the topic, the snake follows. Source in [`tools/demo/sorter/`](tools/demo/sorter/).
 
-**Or watch the backends race:** [the head-to-head demo](docs/assets/race-demo.mp4) fires the same headline as a 4-call burst at ANE and MLX concurrently — two lanes, each marker at its server-measured latency. ANE drains the burst in a tight cluster; MLX stair-steps out as calls serialize on the bridge. Same checkpoint on both sides; fallbacks and escalations show on-lane, honestly. Source: `race.html`/`race.js` in the same directory.
+<p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-poster.png" alt="Watch the burst race (MP4): ANE and MLX markers at their server-reported timings, with both choosing Sci/Tech" width="720"></a></p>
+
+**Or watch the backends race:** [the head-to-head demo](docs/assets/race-demo.mp4) fires the same headline as a 4-call burst at ANE and MLX concurrently — two lanes, each marker at its server-measured latency. ANE drains the burst in a tight cluster; MLX stair-steps out as calls serialize on the bridge. Same checkpoint on both sides; redirects land on the answering backend's lane as hollow rings, and Jev answers appear separately in amber. Source: `race.html`/`race.js` in the same directory.
 
 ## Quick start
 
@@ -51,7 +55,7 @@ curl -s http://127.0.0.1:8767/predict \
 
 ## The rules of the house
 
-- ANE only gets short, single, multilingual questions (≤96 rendered tokens). English and typed-decisions never ride the Neural Engine.
+- ANE only gets short, single questions that fit the exported CoreML head (≤96 rendered tokens) — english and multilingual both ride the Neural Engine when the fit gate passes. Fit decides, not the language detector.
 - An ANE capacity/shape failure retries exactly once on MLX. A hard failure stays visible — we don't dress it up as an answer.
 - Jev fires when you ask for it, when confidence runs too close, or on retry. It's the only path that leaves the machine.
 - Keys live in your environment (Infisical-style), never in this repo.
@@ -99,4 +103,4 @@ Any project on the machine can ask jevalaya a question — define your `state` a
 
 ## Status
 
-Milestone build: routing core, MLX bridge, and Jev client verified end-to-end; CoreML ANE adapter in progress. See `docs/DESIGN.md` for the full contract.
+Routing core, CoreML ANE adapter, MLX bridge, and Jev client verified end-to-end — all three backends answer live in the demos above. See `docs/DESIGN.md` for the full contract.
