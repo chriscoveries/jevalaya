@@ -86,14 +86,19 @@ pub fn choose_checkpoint(
     let workflow = match_typed_decisions_workflow(questions);
 
     if let Some(model) = model {
-        let cp = Checkpoint::from_name(model)
-            .ok_or_else(|| RouteError::InvalidRequest(format!("unknown model {model:?}")))?;
-        return Ok(CheckpointChoice {
-            checkpoint: cp,
-            reason: format!("explicit model={model:?}"),
-            workflow,
-            detection: None,
-        });
+        if let Some(cp) = Checkpoint::from_name(model) {
+            return Ok(CheckpointChoice {
+                checkpoint: cp,
+                reason: format!("explicit model={model:?}"),
+                workflow,
+                detection: None,
+            });
+        }
+        // `jev-*` ids name the remote TypeSafe model, not local weights —
+        // drop-in Jev clients send them unconditionally, so don't pin.
+        if !model.to_lowercase().starts_with("jev") {
+            return Err(RouteError::InvalidRequest(format!("unknown model {model:?}")));
+        }
     }
 
     if let Some(task) = task {

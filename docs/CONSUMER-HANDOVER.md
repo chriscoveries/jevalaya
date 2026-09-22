@@ -86,6 +86,7 @@ Read it like this: `backend` is who answered; `reason` is a stable prefix plus h
 
 ### Overrides
 
+- `POST /v1/systemone` is an alias of `/predict` — existing Jev clients that post `{model, state, questions}` can repoint their `base_url` at jevalaya unchanged. `jev-*` model ids are accepted and don't pin a checkpoint; only `english`/`multilingual`/`typed-decisions` pin weights.
 - `"backend": "ane"` asks for the Neural Engine but doesn't skip the safety gates — short single multilingual only (≤96 rendered tokens), or you'll ride MLX with an honest reason. `"backend": "mlx"` pins local. `"backend": "jev"` goes straight to TypeSafe (needs the key; `token_count` stays null — Jev tokenizes server-side).
 - `"model": "multilingual"` pins the checkpoint; otherwise script/language detection picks (explicit beats detected, always).
 - `"compare": ["mlx", "jev"]` (or `true`) fans out and returns every backend's answer side by side under `compare`, primary first. Handy for calibratin' your own thresholds.

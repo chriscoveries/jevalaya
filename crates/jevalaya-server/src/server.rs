@@ -270,6 +270,7 @@ async fn feedback(
 pub fn app(state: Arc<AppState>, max_body: usize) -> AxumRouter {
     let authed = AxumRouter::new()
         .route("/predict", post(predict))
+        .route("/v1/systemone", post(predict))
         .route("/route", post(route_only))
         .route("/feedback", post(feedback))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
