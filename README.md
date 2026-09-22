@@ -1,12 +1,65 @@
 <p align="center"><img src="docs/assets/logo.svg" alt="jevalaya" width="320"></p>
 
-<p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
+# Keep calling Jev. Most of it never leaves the Mac.
 
-Laissez les bons temps rouler, cher — this here's a fast little router for your Mac.
+Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust house band for Apple Silicon: short calls hit the Neural Engine, roomier ones ride local MLX, and Jev (TypeSafe) only gets the ticket when confidence/margin say it earned it. Every response carries a routing receipt — backend, latency, reason. Laissez les bons temps rouler.
 
-`jevalaya` serves one simple endpoint and answers typed questions — *this or that, how much, yes or no* — by sending each request to the right pot: a tiny CoreML model on the Neural Engine when the ask is short, a local MLX Laya when it needs more room, and Jev (TypeSafe) when the answer's too close to call. You bring your own models and keys; jevalaya just does the routin', quick and honest.
+## See it work
+
+### 1. The burst
+
+`backend: ane / mlx` `ms: server-reported` `reason: explicit_backend`
+
+<p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-poster.png" alt="Watch the burst race (MP4): ANE and MLX markers at their server-reported timings, with both choosing Sci/Tech" width="720"></a></p>
+
+[Watch the burst race (MP4)](docs/assets/race-demo.mp4)
+
+<details>
+<summary>Inside the burst</summary>
+
+**Or watch the backends race:** [the head-to-head demo](docs/assets/race-demo.mp4) fires the same headline as a 4-call burst at ANE and MLX concurrently — two lanes, each marker at its server-measured latency. ANE drains the burst in a tight cluster; MLX stair-steps out as calls serialize on the bridge. Same checkpoint on both sides; redirects land on the answering backend's lane as hollow rings, and Jev answers appear separately in amber. Source: `race.html`/`race.js` in the same directory.
+
+</details>
+
+### 2. The snake
+
+`backend: ane / mlx / jev` `ms: server-reported` `reason: per receipt`
+
+<p align="center"><a href="docs/assets/snake-demo.mp4"><img src="docs/assets/snake-demo-poster.png" alt="Watch the snake routing demo (MP4): a live ANE receipt and the snake following the selected topic" width="900"></a></p>
+
+[Watch the snake demo (MP4)](docs/assets/snake-demo.mp4)
+
+<details>
+<summary>Inside the snake</summary>
+
+**Want to watch the router think?** [The snake demo](docs/assets/snake-demo.mp4) is a little arcade game that lives entirely on `/predict`: a headline appears, the model classifies it, and the snake slithers to the bin the router chose — short headlines hit ANE, full articles route MLX, one scripted golden headline phones Jev, and a lag switch shows what a slow backend costs. The overlay is the raw routing receipt; the snake is presentation, not steering — the model picks the topic, the snake follows. Source in [`tools/demo/sorter/`](tools/demo/sorter/).
+
+</details>
+
+### 3. The phone home
+
+`backend: jev` `ms: server-reported` `reason: … escalated to jev`
+
+*real Jev escalation on camera; paid cloud, named reason, same /predict.*
+
+<p align="center"><img src="docs/assets/demo.gif" alt="live terminal demo: /predict routing to ANE, MLX, and Jev, plus /feedback" width="900"></p>
+
+[Inspect the recorded receipts](docs/assets/demo.cast)
+
+<details>
+<summary>Timing and accuracy, in context</summary>
+
+| Measurement | Context |
+| --- | --- |
+| ~18ms p50 | 4-call ANE burst on M1 Max |
+| ~8ms | upstream laya-coreml on M3 Max |
+| ~93% | local AG News |
+
+</details>
 
 ## What it does
+
+<p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
 - `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
 - Routes by content: checkpoint family (english / multilingual / typed-decisions), rendered token count, and confidence — with a fallback hop from ANE to MLX and an escalation hop from local to Jev.
@@ -14,19 +67,7 @@ Laissez les bons temps rouler, cher — this here's a fast little router for you
 - Every request writes a structured event (latency, backend, confidence, cost) to a JSONL stream — that's the lagniappe a future lil' app can visualize.
 - Compare mode: ask for `compare=["ane","mlx","jev"]` and get every backend's answer side by side.
 
-## See it work
-
-<p align="center"><img src="docs/assets/demo.gif" alt="live terminal demo: /predict routing to ANE, MLX, and Jev, plus /feedback" width="900"></p>
-
-Real terminal, real server — five beats: health, ANE on a short request, ANE on English (fit decides, not the detector), multi-question MLX, explicit Jev escalation, and a consumer verdict into `/feedback`.
-
-<p align="center"><a href="docs/assets/snake-demo.mp4"><img src="docs/assets/snake-demo-poster.png" alt="Watch the snake routing demo (MP4): a live ANE receipt and the snake following the selected topic" width="900"></a></p>
-
-**Want to watch the router think?** [The snake demo](docs/assets/snake-demo.mp4) is a little arcade game that lives entirely on `/predict`: a headline appears, the model classifies it, and the snake slithers to the bin the router chose — short headlines hit ANE, full articles route MLX, one scripted golden headline phones Jev, and a lag switch shows what a slow backend costs. The overlay is the raw routing receipt; the snake is presentation, not steering — the model picks the topic, the snake follows. Source in [`tools/demo/sorter/`](tools/demo/sorter/).
-
-<p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-poster.png" alt="Watch the burst race (MP4): ANE and MLX markers at their server-reported timings, with both choosing Sci/Tech" width="720"></a></p>
-
-**Or watch the backends race:** [the head-to-head demo](docs/assets/race-demo.mp4) fires the same headline as a 4-call burst at ANE and MLX concurrently — two lanes, each marker at its server-measured latency. ANE drains the burst in a tight cluster; MLX stair-steps out as calls serialize on the bridge. Same checkpoint on both sides; redirects land on the answering backend's lane as hollow rings, and Jev answers appear separately in amber. Source: `race.html`/`race.js` in the same directory.
+**Point it at your models, keep TYPESAFE_API_KEY for the ones that earn the ride, keep POSTing /predict. Same Jev. Smarter pots.**
 
 ## Quick start
 
