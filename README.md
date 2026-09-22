@@ -31,18 +31,6 @@ One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where
 
 </details>
 
-## What it does, in plain English
-
-Every request goes to one of three places. jevalaya picks the cheapest one that can handle it:
-
-- **ANE — the Apple Neural Engine.** It's in every Mac since the M1 and almost nothing uses it. Lots of tiny cores, tiny context, super efficient, super fast. If your question fits in a handful of tokens, this is where it goes — and it answers in milliseconds, on the chip, for free.
-- **MLX — your GPU.** Bigger, heavier, holds much more context. When a question is too long for the Neural Engine, it stays on your Mac anyway and runs locally through MLX.
-- **API — Jev, the cloud.** That means sending a packet from you, past your wifi, through all the internet, to Jev... and back again. For maybe a 1-in-50 chance of a better answer. Oh, and paying for it. jevalaya only spends that call when the local models genuinely can't call it — and tells you exactly why in the receipt.
-
-**You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
-
-
-
 ## What it does
 
 - `POST /predict` — the drop-in laya/jev predict contract: `{state, questions}` in, `{model, answers, usage, routing}` out.
@@ -52,6 +40,28 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 - Compare mode: ask for `compare=["ane","mlx","jev"]` and get every backend's answer side by side.
 
 **Point it at your models, keep TYPESAFE_API_KEY for the ones that earn the ride, keep POSTing /predict. Same Jev. Smarter pots.**
+
+## ELI12
+
+Every request goes to one of three places. jevalaya picks the cheapest one that can handle it:
+
+- **ANE — the Apple Neural Engine.** It's in every Mac since the M1 and almost nothing uses it. Lots of tiny cores, tiny context, super efficient, super fast. If your question fits in a handful of tokens, this is where it goes — and it answers in milliseconds, on the chip, for free.
+- **MLX — your GPU.** Bigger, heavier, holds much more context. When a question is too long for the Neural Engine, it stays on your Mac anyway and runs locally through MLX.
+- **API — Jev, the cloud.** That means sending a packet from you, past your wifi, through all the internet, to Jev... and back again. For maybe a 1-in-50 chance of a better answer. Oh, and paying for it. jevalaya only spends that call when the local models genuinely can't call it — and tells you exactly why in the receipt.
+
+**You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
+
+## How do I use it
+
+You POST `state` and `questions`, jevalaya returns typed answers plus the routing receipt — so anything that can speak the predict contract works. Folks are already building on Jev:
+
+- [jev](https://github.com/anilsenay/jev) (Go, unofficial) — ask Jev questions and get answers back as your own Go types; the compiler checks your `switch`, not just the JSON.
+- [jev-router](https://github.com/Akashdb5/jev-router) (Python) — Jev-powered security screening and cost-aware routing across OpenAI, Anthropic, and OpenRouter models.
+- [Predict-With-Jev](https://github.com/Protocol-Lattice/Predict-With-Jev) — a crypto market research dashboard that runs forecasts and walk-forward evaluation through Jev's System One API.
+- [pi-jev-router](https://pi.dev/packages/pi-jev-router) — lets Jev pick a model and reasoning effort for the Pi coding agent.
+- [pi-typesafe-router](https://pi.dev/packages/pi-typesafe-router) — Jev classifies Pi requests and routes them across TypeSafe, Cloudflare, Vercel, and OpenRouter backends.
+
+Point your own project at `http://127.0.0.1:8767/predict` instead of Jev's endpoint and the same calls get answered locally first — your agent code doesn't change, your bill does. The full contract is in `docs/CONSUMER-HANDOVER.md`.
 
 ## Quick start
 
