@@ -15,22 +15,35 @@ default_checkpoint = "english"
 auto_task_detection = false
 compare_backends = ["mlx", "jev"]
 
-# User-supplied model directories (HF cache paths or local dirs both work)
+# Model directories — `hf download` puts them in the HF hub cache:
+#   hf download aac6fef/laya-mlx
+#   hf download aac6fef/laya-multilingual-mlx
+#   hf download aac6fef/laya-typed-decisions-mlx
+#   hf download aac6fef/laya-multilingual-coreml-ane
+# then point each key at the snapshot dir (…/models--aac6fef--REPO/snapshots/HASH)
+# or any local dir with the same contents. Paths must be absolute — ~ is
+# not expanded.
 [models]
-english = "/path/to/laya-english"
-multilingual = "/path/to/laya-multilingual"
-typed_decisions = "/path/to/laya-typed-decisions"
+english = "/Users/YOU/.cache/huggingface/hub/models--aac6fef--laya-mlx/snapshots/HASH"
+multilingual = "/Users/YOU/.cache/huggingface/hub/models--aac6fef--laya-multilingual-mlx/snapshots/HASH"
+typed_decisions = "/Users/YOU/.cache/huggingface/hub/models--aac6fef--laya-typed-decisions-mlx/snapshots/HASH"
 
 [ane]
 enabled = true
-model = "/path/to/laya-multilingual-coreml-ane"
+model = "/Users/YOU/.cache/huggingface/hub/models--aac6fef--laya-multilingual-coreml-ane/snapshots/HASH"
 max_tokens = 96
 alignment = 1
 preload = false
 
 [mlx]
 enabled = true
-python = "/path/to/laya-mlx/.venv/bin/python"
+# sys.path entries for the embedded interpreter: the dir containing laya_mlx/
+# (a laya-mlx checkout, or site-packages if pip-installed) and your venv's
+# site-packages. PYO3_PYTHON must point at that interpreter at BUILD time.
+python_path = [
+    "/path/to/laya-mlx",
+    "/path/to/laya-mlx/.venv/lib/python3.13/site-packages",
+]
 max_loaded = 1
 preload = false
 # Optional socket sidecar fallback, never the v1 primary path.
