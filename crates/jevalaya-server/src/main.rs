@@ -183,6 +183,36 @@ fn build_sink(cfg: &ServerConfig) -> Result<Arc<dyn EventSink>, String> {
     }
 }
 
+/// Resolve the `[feedback] sink` spec to a writable JSONL path. Same
+/// `jsonl:PATH` shape as observability; `~` expands via `$HOME`. Parent
+/// dirs are created at startup so first write never fails on a missing
+/// dir. Absent section = no endpoint (handler answers 503).
+fn build_feedback_sink(cfg: &ServerConfig) -> Result<Option<std::path::PathBuf>, String> {
+    let spec = match cfg.feedback.sink.as_deref() {
+        None => return Ok(None),
+        Some(s) => s,
+    };
+    let path = spec.strip_prefix("jsonl:").ok_or_else(|| {
+        format!("feedback.sink {spec:?}: only jsonl:PATH is supported")
+    })?;
+    let expanded = if let Some(rest) = path.strip_prefix("~/") {
+        let home = std::env::var("HOME")
+            .map_err(|_| "feedback.sink uses ~ but HOME is unset".to_string())?;
+        format!("{home}/{rest}")
+    } else {
+        path.to_string()
+    };
+    let path = std::path::PathBuf::from(expanded);
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create feedback dir {}: {e}", parent.display()))?;
+        }
+    }
+    info!("consumer feedback → {}", path.display());
+    Ok(Some(path))
+}
+
 fn assemble(cfg: &ServerConfig) -> Result<(Router, Vec<String>), String> {
     if cfg.server.offline {
         // Offline mode: cached hub content only, no network resolution.
@@ -274,12 +304,20 @@ async fn main() {
     let policy = router.config();
     let health_model = policy.model_id(policy.default_checkpoint);
     drop(policy);
+    let feedback_sink = match build_feedback_sink(&cfg) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    };
     let state = Arc::new(server::AppState {
         router,
         auth_token,
         health_model,
         inflight: tokio::sync::Semaphore::new(cfg.server.max_inflight.max(1)),
         request_timeout: Duration::from_millis(cfg.server.request_timeout_ms),
+        feedback_sink,
     });
     // Preload-on-boot runs in the background so /health answers
     // immediately while weights warm (DESIGN.md: readiness without

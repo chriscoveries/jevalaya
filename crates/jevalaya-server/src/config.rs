@@ -24,6 +24,8 @@ pub struct ServerConfig {
     pub jev: JevSection,
     #[serde(default)]
     pub observability: ObservabilitySection,
+    #[serde(default)]
+    pub feedback: FeedbackSection,
     /// Checkpoint router knobs (`default_checkpoint`, `auto_task_detection`,
     /// `compare_backends`) — parsed straight into `PolicyConfig`.
     #[serde(default)]
@@ -129,6 +131,14 @@ pub struct ObservabilitySection {
     pub sink: Option<String>,
     #[serde(default = "default_queue_capacity")]
     pub queue_capacity: usize,
+}
+
+/// Consumer feedback sink (T028): `jsonl:/path/to/feedback.jsonl`.
+/// `POST /feedback` appends validated records here. Absent = no endpoint
+/// (503); anything but `jsonl:` is rejected at startup like observability.
+#[derive(Debug, Default, Deserialize)]
+pub struct FeedbackSection {
+    pub sink: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]

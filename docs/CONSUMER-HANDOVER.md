@@ -132,17 +132,25 @@ A few house rules from folks who've burned themselves:
 
 ## Feedback — tell us how the answers did
 
-Here's the part that makes the whole thing smarter, and we made it as easy as postage: **append one JSON line per judged run** to the feedback sink path in your config (`[feedback] sink`, e.g. `~/.jevalaya/feedback.jsonl`):
+Here's the part that makes the whole thing smarter, and there's two ways to send it, cher — pick whichever fits your setup:
 
-```json
-{"consumer": "my-app", "request_id": "abc-123",
- "chosen_answer_ok": true, "expected": "billing",
- "notes": "refund was a close second at 0.44", "ts": "2026-09-21T21:00:00Z"}
+**1. `POST /feedback`** (same bearer token as `/predict`):
+
+```bash
+curl -s http://127.0.0.1:8767/feedback \
+  -H "Authorization: Bearer $JEVALAYA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"consumer": "my-app", "request_id": "abc-123",
+       "chosen_answer_ok": false, "expected": "billing",
+       "notes": "refund was a close second at 0.44"}' 
+# → {"ok": true} with HTTP 202
 ```
 
-Fields: `consumer` (who you are), `request_id` (echo it from your request so we can join), `chosen_answer_ok` (did the top answer do right by you), `expected` (the label you wanted, when there is one), `notes` (free text — close calls, weird confidences, all welcome), `ts` (when you judged it). Truthful negatives are the lagniappe — a hundred "this was wrong and here's why" beats a thousand silent successes for tunin' thresholds.
+Required: `consumer` (who you are), `request_id` (echo it from your request so we can join), `chosen_answer_ok` (did the top answer do right by you). Optional: `expected` (the label you wanted), `notes` (free text — close calls, weird confidences, all welcome), `ts` (your judgment timestamp; the server stamps `received_unix` regardless). Missing fields get a `400`; no token a `401`; a server without a feedback sink answers `503`. The record lands in the operator's configured `[feedback] sink` JSONL — ask them where it lives if you're curious.
 
-Two honest notes: today the sink is a **convention, not an endpoint** — your process appends the file (create the dir first), and a `POST /feedback` route is on the roadmap. And `request_id` only shows up in our logs if you send it — so send it, cher, otherwise we can't find your run in a crowd.
+**2. Append the file yourself** — same schema, one JSON line per judgment, to whatever path you and the operator agreed on (default convention `~/.jevalaya/feedback.jsonl`). Same fields, same effect; handy when you're batchin' judgments offline.
+
+Truthful negatives are the lagniappe — a hundred "this was wrong and here's why" beats a thousand silent successes for tunin' thresholds. And `request_id` only shows up in our logs if you send it — so send it, cher, otherwise we can't find your run in a crowd.
 
 ## Jev, money, and leavin' the machine
 
