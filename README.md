@@ -48,9 +48,12 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 | Measurement | Context |
 | --- | --- |
-| ~18ms p50 | 4-call ANE burst on M1 Max |
+| 8.8ms p50 | ANE, 30 solo calls, M1 Max (low power off) |
+| 10.3ms p50 | MLX, 30 solo calls, M1 Max (low power off) |
 | ~8ms | upstream laya-coreml on M3 Max |
 | ~93% | local AG News |
+
+[Full chart: local backends at full power](docs/assets/local-backends.png)
 
 </details>
 
