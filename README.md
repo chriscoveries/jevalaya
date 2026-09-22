@@ -64,6 +64,7 @@ Laya is the open-weight sibling of the same idea — the same typed-decision con
 
 You POST `state` and `questions`, jevalaya returns typed answers plus the routing receipt — so anything that can speak the predict contract works. Folks are already building on Jev:
 
+- [semdecide](https://github.com/sharziki/semdecide) — `grep` for meaning: typed Jev decisions (`is`/`choose`/`score`/`filter`/`guard`) as Unix pipelines with stable exit codes and JSON output.
 - [jev](https://github.com/anilsenay/jev) (Go, unofficial) — ask Jev questions and get answers back as your own Go types; the compiler checks your `switch`, not just the JSON.
 - [jev-router](https://github.com/Akashdb5/jev-router) (Python) — Jev-powered security screening and cost-aware routing across OpenAI, Anthropic, and OpenRouter models.
 - [Predict-With-Jev](https://github.com/Protocol-Lattice/Predict-With-Jev) — a crypto market research dashboard that runs forecasts and walk-forward evaluation through Jev's System One API.
