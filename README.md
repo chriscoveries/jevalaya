@@ -10,7 +10,7 @@ Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust hous
 
 `backend: ane / mlx` `ms: server-reported` `reason: explicit_backend`
 
-<p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-poster.png" alt="Watch the burst race (MP4): ANE and MLX markers at their server-reported timings, with both choosing Sci/Tech" width="720"></a></p>
+<p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-preview.gif" alt="Burst race: ANE and MLX markers at their server-reported timings, both choosing Sci/Tech (click for full MP4)" width="540"></a></p>
 
 [Watch the burst race (MP4)](docs/assets/race-demo.mp4)
 
@@ -25,7 +25,7 @@ Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust hous
 
 `backend: ane / mlx / jev` `ms: server-reported` `reason: per receipt`
 
-<p align="center"><a href="docs/assets/snake-demo.mp4"><img src="docs/assets/snake-demo-poster.png" alt="Watch the snake routing demo (MP4): a live ANE receipt and the snake following the selected topic" width="900"></a></p>
+<p align="center"><a href="docs/assets/snake-demo.mp4"><img src="docs/assets/snake-demo-preview.gif" alt="Snake routing demo: a live ANE receipt and the snake following the selected topic (click for full MP4)" width="640"></a></p>
 
 [Watch the snake demo (MP4)](docs/assets/snake-demo.mp4)
 
@@ -70,6 +70,8 @@ Same drop-in `/predict`. Same `{state, questions}`. jevalaya is a tiny Rust hous
 **Point it at your models, keep TYPESAFE_API_KEY for the ones that earn the ride, keep POSTing /predict. Same Jev. Smarter pots.**
 
 ## Quick start
+
+Grab the prebuilt binary from [Releases](https://github.com/eafire15/jevalaya/releases) (`jevalaya-v0.1.0-macos-aarch64.tar.gz` — Apple Silicon), or build from source:
 
 ```bash
 cargo build --workspace
