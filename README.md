@@ -167,9 +167,4 @@ Routing core, CoreML ANE adapter, MLX bridge, and Jev client verified end-to-end
 
 ## More from the workshop
 
-- [MacsyZones](https://github.com/chriscoveries/MacsyZones) — organize your windows on macOS, the easy way.
-- [CodexBar](https://github.com/chriscoveries/CodexBar) — usage stats for OpenAI Codex and Claude Code, no login needed.
-- [opengrok](https://github.com/chriscoveries/opengrok) — run any model in Grok Bot; one-command setup, model picker, update-proof doctor.
-- [codex-shim](https://github.com/chriscoveries/codex-shim) — local Responses-API shim exposing BYOK models to Codex Desktop.
-- [antigravity-claude-proxy](https://github.com/chriscoveries/antigravity-claude-proxy) — use Antigravity's Claude/Gemini models inside Claude Code.
 - [CCCC-Workflows](https://github.com/chriscoveries/CCCC-Workflows) — multi-agent collaboration workflows.
