@@ -4,6 +4,8 @@
 
 One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where it should be answered — and hands you back the answer plus a receipt saying who answered, how long it took, and why. Laissez les bons temps rouler.
 
+**What is Jev?** TypeSafe's cloud decision API — you send state and typed questions, it sends back answers from inside your own answer set, with confidence.
+
 <p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
 ## What it does
