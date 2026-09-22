@@ -64,6 +64,7 @@ You POST `state` and `questions`, jevalaya returns typed answers plus the routin
 
 - [webctl](https://github.com/dorkitude/webctl) — web search CLI for agents: Jev scores every result and scraped chunk for relevance, so only what matters reaches your context window. Point `jev.base_url` at jevalaya and the scoring stays local.
 - [semdecide](https://github.com/sharziki/semdecide) — `grep` for meaning: typed Jev decisions (`is`/`choose`/`score`/`filter`/`guard`) as Unix pipelines with stable exit codes and JSON output.
+- [agent-beacon](https://github.com/Asymptote-Labs/agent-beacon) — cross-harness agent session memory (Claude Code, Cursor, Codex, 20+ runtimes); its trace evaluation rubric calls Jev, so `--jev-endpoint` pointed at jevalaya keeps the memory loop local.
 - [jev](https://github.com/anilsenay/jev) (Go, unofficial) — ask Jev questions and get answers back as your own Go types; the compiler checks your `switch`, not just the JSON.
 - [jev-router](https://github.com/Akashdb5/jev-router) (Python) — Jev-powered security screening and cost-aware routing across OpenAI, Anthropic, and OpenRouter models.
 - [Predict-With-Jev](https://github.com/Protocol-Lattice/Predict-With-Jev) — a crypto market research dashboard that runs forecasts and walk-forward evaluation through Jev's System One API.
