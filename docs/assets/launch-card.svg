@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-labelledby="title desc">
+  <title id="title">jevalaya launch card</title>
+  <desc id="desc">A dark launch card for jevalaya, a local-first decision router with a compact ANE and MLX burst-race motif.</desc>
+
+  <defs>
+    <style>
+      .sans { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; }
+      .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+      .primary { fill: #f0f6fc; }
+      .muted { fill: #8b949e; }
+      .blue { fill: #58a6ff; }
+      .teal { fill: #3fb950; }
+    </style>
+  </defs>
+
+  <rect width="800" height="450" fill="#0d1117"/>
+
+  <!-- Reused rail-junction mark and wordmark. -->
+  <g fill="none" stroke="#58a6ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M72 78H104"/>
+    <path d="M104 78C123 78 129 54 156 54"/>
+    <path d="M104 78C124 78 136 78 156 78"/>
+    <path d="M104 78C123 78 129 102 156 102"/>
+  </g>
+  <text x="174" y="89" class="mono primary" font-size="34" font-weight="600" letter-spacing="-1.4">jevalaya</text>
+
+  <text x="72" y="132" class="mono muted" font-size="10.5" letter-spacing="2.2">LOCAL DECISION ROUTER · MAC</text>
+  <text x="72" y="181" class="sans primary" font-size="24" font-weight="500" letter-spacing="-0.15">one /predict endpoint. three backends. receipts on every call.</text>
+  <path d="M72 207H728" fill="none" stroke="#30363d" stroke-width="1.25"/>
+
+  <!-- Compact burst-race motif, echoing the demo's server-span lanes. -->
+  <rect x="360" y="235" width="368" height="156" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.25"/>
+  <text x="384" y="261" class="mono muted" font-size="10.5" letter-spacing="1.6">BURST RACE</text>
+  <text x="704" y="261" text-anchor="end" class="mono muted" font-size="10.5">SERVER SPAN</text>
+
+  <text x="384" y="289" class="mono blue" font-size="15" font-weight="600">ANE</text>
+  <text x="704" y="289" text-anchor="end" class="mono blue" font-size="14">18 ms</text>
+  <path d="M434 296H704" fill="none" stroke="#30363d" stroke-width="1.25" stroke-linecap="round"/>
+  <g fill="#58a6ff">
+    <circle cx="551" cy="296" r="3.2"/>
+    <circle cx="559" cy="296" r="3.2"/>
+    <circle cx="567" cy="296" r="3.2"/>
+    <circle cx="575" cy="296" r="3.2"/>
+    <circle cx="583" cy="296" r="3.2"/>
+  </g>
+
+  <text x="384" y="339" class="mono teal" font-size="15" font-weight="600">MLX</text>
+  <text x="704" y="339" text-anchor="end" class="mono teal" font-size="14">~56 ms</text>
+  <path d="M434 346H704" fill="none" stroke="#30363d" stroke-width="1.25" stroke-linecap="round"/>
+  <path d="M454 346H493V338H532V330H571V322H610V314H649" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 5"/>
+  <g fill="#3fb950">
+    <circle cx="493" cy="346" r="3.2"/>
+    <circle cx="532" cy="338" r="3.2"/>
+    <circle cx="571" cy="330" r="3.2"/>
+    <circle cx="610" cy="322" r="3.2"/>
+    <circle cx="649" cy="314" r="3.2"/>
+  </g>
+  <text x="384" y="373" class="mono muted" font-size="10.5">tight local path · escalating span</text>
+
+  <path d="M72 410H728" fill="none" stroke="#30363d" stroke-width="1.25"/>
+  <text x="72" y="429" class="mono muted" font-size="10.5">upstream laya-coreml: ~8ms p50 · M3 Max</text>
+  <text x="728" y="429" text-anchor="end" class="mono muted" font-size="10.5">local first · receipts always</text>
+</svg>
