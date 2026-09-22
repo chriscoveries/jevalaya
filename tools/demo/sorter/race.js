@@ -200,8 +200,8 @@ function redirected(call) {
   return !call.native;
 }
 function lanePresentation(lane) {
-  // Rows identify the request, never the destination. Color and ring style
-  // identify who answered without moving the receipt onto somebody else's row.
+  // Rows and colors identify the request, never the destination. Hollow rings
+  // and destination labels disclose reroutes without borrowing another hue.
   const calls = [...lane.calls].sort((a, b) => (a.arrivalOrder || Infinity) - (b.arrivalOrder || Infinity) || a.id - b.id);
   const received = calls.filter(call => call.state === "done");
   return { calls, received, serverSpan: span(received.map(call => call.serverMs)) };
@@ -236,13 +236,11 @@ function callNote(call) {
   return [`${call.receipt.ms} ms`, identity, call.correct ? "" : "wrong"].filter(Boolean).join(" · ");
 }
 function callColor(call) {
-  if (call.state === "pending" || call.state === "busy") return UI.muted;
-  if (call.state === "error" || !call.correct) return UI.red;
-  return COLOR[call.receipt.backend];
+  return call.state === "done" ? COLOR[call.key] : UI.muted;
 }
-function drawReceiptMarker(call, x, y, color = COLOR[call.receipt.backend]) {
-  // Answerer color is stable even on a wrong answer; red labels, row flash
-  // and bin borders carry correctness without erasing the backend identity.
+function drawReceiptMarker(call, x, y) {
+  // Hue always belongs to the requested row, even on redirects or mistakes.
+  const color = COLOR[call.key];
   if (!redirected(call)) return dot(x, y, color, 4);
   // Transparent ring, not a filled fake-native dot. Coincident native dots
   // remain visible inside the ring when two real timings are exactly equal.
@@ -251,19 +249,25 @@ function drawReceiptMarker(call, x, y, color = COLOR[call.receipt.backend]) {
 }
 function drawConnections(lane, y, index) {
   if (lane.state !== "done") return;
-  const choices = new Map();
-  lane.calls.filter(call => call.state === "done").forEach(call => {
-    const key = `${call.choice}:${call.receipt.backend}`;
-    choices.set(key, { choice: call.choice, color: COLOR[call.receipt.backend] });
-  });
-  choices.forEach(({ color, choice }) => {
+  const choices = new Set(lane.calls.filter(call => call.state === "done").map(call => call.choice));
+  choices.forEach(choice => {
     const bin = LABELS.indexOf(choice), targetX = 109.5 + bin * 167 + (index - 1) * 6;
     const elbowX = [708, 700, 692][index];
     const elbowY = [611, 615, 619][index];
     cx.beginPath(); cx.moveTo(693, y); cx.lineTo(elbowX, y); cx.lineTo(elbowX, elbowY);
     cx.lineTo(targetX, elbowY); cx.lineTo(targetX, 622);
-    cx.strokeStyle = color + "88"; cx.lineWidth = 1.5; cx.stroke();
+    cx.strokeStyle = COLOR[lane.key] + "88"; cx.lineWidth = 1.5; cx.stroke();
   });
+}
+function drawTimeAxis(key, y, scale) {
+  const start = 112, end = 688;
+  line(start, y, end, y, COLOR[key] + "66");
+  for (let tick = 0; tick <= 4; tick++) {
+    const x = start + (end - start) * tick / 4;
+    line(x, y - 4, x, y + 4, UI.line);
+  }
+  // The right endpoint is the exact session maximum, not a rounded bucket.
+  text(`max ${Math.round(scale)} ms`, end, y - 9, 16, UI.muted, true, "right");
 }
 function drawLane(lane, index, now, scale, layout) {
   const y = layout.laneY[index], start = 112, end = 688;
@@ -271,7 +275,7 @@ function drawLane(lane, index, now, scale, layout) {
   const wrong = view.received.filter(call => !call.correct);
   if (wrong.length && !reducedMotion.matches) {
     const pulse = Math.max(0, 1 - (now - Math.max(...wrong.map(call => call.finishedAt))) / 350);
-    cx.fillStyle = UI.red + "14"; cx.globalAlpha = pulse;
+    cx.fillStyle = COLOR[lane.key] + "14"; cx.globalAlpha = pulse;
     cx.fillRect(24, y - 50, 672, 125); cx.globalAlpha = 1;
   }
   text(BACKEND_LABEL[lane.key], 32, y - 22, 24, COLOR[lane.key], true, "left", 600);
@@ -282,12 +286,8 @@ function drawLane(lane, index, now, scale, layout) {
   const metric = lane.key === "jev" ? apiReceipt ? apiReceipt.serverMs : null : view.serverSpan;
   const server = metric === null ? "—" : Math.round(metric);
   text(`${pending ? elapsed : server} ms`, 360, y - 22, 34, UI.text, true, "center", 500);
-  text(pending ? "elapsed" : lane.key === "jev" ? "server ms" : "server span", end, y - 22, 15, UI.muted, false, "right");
-  line(start, y, end, y, COLOR[lane.key] + "66");
-  for (let tick = 0; tick <= 4; tick++) {
-    const x = start + (end - start) * tick / 4;
-    line(x, y - 4, x, y + 4, UI.line);
-  }
+  text(pending ? "elapsed" : lane.key === "jev" ? "server ms" : "server span", end, y - 33, 15, UI.muted, false, "right");
+  drawTimeAxis(lane.key, y, scale);
   // A small pulse at the lane label means active, not simulated completion.
   if (pending) {
     cx.globalAlpha = paused || reducedMotion.matches ? 0.6 : 0.55 + 0.35 * Math.sin(lane.motionMs / 180);
@@ -373,7 +373,7 @@ function draw(now = performance.now()) {
   else BACKENDS.forEach((key, i) => {
     const y = layout.laneY[i];
     text(BACKEND_LABEL[key], 32, y - 22, 24, COLOR[key], true, "left", 600);
-    line(112, y, 688, y);
+    drawTimeAxis(key, y, scale);
   });
   LABELS.forEach(drawBin);
 }
