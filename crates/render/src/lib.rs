@@ -24,7 +24,7 @@ pub mod tokenizer;
 pub use config::ModelBudgets;
 pub use question::{to_internal, QType, Question};
 pub use render::{
-    ane_eligible, build_prefix, build_sequence, gate_counts, prepare, rendered_len, GateCounts,
-    Rendered, DEFAULT_MAX_ANE_TOKENS,
+    ane_eligible, build_prefix, build_sequence, gate_counts, option_ceiling, prepare, rendered_len,
+    GateCounts, Rendered, DEFAULT_MAX_ANE_TOKENS,
 };
 pub use tokenizer::LayaTokenizer;

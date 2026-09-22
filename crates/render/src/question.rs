@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::pyjson::{py_dumps, serialize_state};
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum QuestionError {
     #[error("Each question must be a dictionary")]
     NotADict,
