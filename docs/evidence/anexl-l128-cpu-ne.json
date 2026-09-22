@@ -1,0 +1,673 @@
+{
+  "purpose": "Smoke parity evidence; not an accuracy benchmark or backend promotion approval",
+  "load_log": [
+    {
+      "at": "2026-09-22T21:59:02.183814+00:00",
+      "backend": "coreml",
+      "event": "load_started",
+      "bucket": 128,
+      "compute_units": "cpu_ne"
+    },
+    {
+      "at": "2026-09-22T21:59:02.310344+00:00",
+      "backend": "coreml",
+      "event": "load_completed",
+      "elapsed_ms": 126.24095799401402
+    },
+    {
+      "at": "2026-09-22T21:59:02.310437+00:00",
+      "backend": "mlx",
+      "event": "load_started",
+      "dtype": "float16",
+      "device": "gpu"
+    },
+    {
+      "at": "2026-09-22T21:59:03.038216+00:00",
+      "backend": "mlx",
+      "event": "load_completed",
+      "elapsed_ms": 727.7528749982594
+    }
+  ],
+  "platform": {
+    "chip": "Apple M1 Max",
+    "macos": "27.0",
+    "python": "3.13.12"
+  },
+  "versions": {
+    "coremltools": "9.0",
+    "mlx": "0.32.2",
+    "numpy": "2.5.3",
+    "tokenizers": "0.23.2"
+  },
+  "coreml": {
+    "snapshot": "7b8d7a2b7e28e746c6ecaad44bbcd5cf251a4fcc",
+    "source": {
+      "repo": "convaiinnovations/laya",
+      "subfolder": "multilingual",
+      "revision": "1c5edc17a7acd8701df6fc341c0d179f1c62c982",
+      "encoder": "jhu-clsp/mmBERT-base",
+      "license": "apache-2.0"
+    },
+    "bucket": 128,
+    "compute_units_requested": "cpu_ne",
+    "placement_note": "Allowed compute units, not proof of exclusive ANE execution",
+    "signature": {
+      "inputs": {
+        "attention_mask": {
+          "dtype": "int32",
+          "shape": [
+            1,
+            128
+          ]
+        },
+        "input_ids": {
+          "dtype": "int32",
+          "shape": [
+            1,
+            128
+          ]
+        },
+        "marker_map": {
+          "dtype": "fp32",
+          "shape": [
+            1,
+            32,
+            128
+          ]
+        },
+        "question_type": {
+          "dtype": "fp32",
+          "shape": [
+            1,
+            3
+          ]
+        }
+      },
+      "outputs": {
+        "logits": {
+          "dtype": "fp32",
+          "shape": [
+            1,
+            32
+          ]
+        },
+        "probabilities": {
+          "dtype": "fp32",
+          "shape": [
+            1,
+            32
+          ]
+        },
+        "action_probabilities": {
+          "dtype": "fp32",
+          "shape": [
+            1,
+            2
+          ]
+        }
+      },
+      "mil_sha256": "0fbc069ce5b66d0f2a28387c90116c30f95f8555600ccf46d612590edf646e49"
+    },
+    "weight_sha256": "506eb53e74aaebcdfb3f55304fbdd0b9c1678026efaef60454a1c66557f35d90",
+    "load_ms": 126.24095799401402
+  },
+  "mlx": {
+    "snapshot": "f2b4faf51023039425946074e2cf1361d2db11d5",
+    "dtype": "float16",
+    "load_ms": 727.7528749982594,
+    "provenance": {
+      "format": "laya-mlx",
+      "format_version": 1,
+      "dtype": "float16",
+      "source": "convaiinnovations/laya-multilingual",
+      "revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+      "subfolder": null,
+      "source_revision": "052592a15d198d9ad47da779604259b10b47b7aa",
+      "repository": "aac6fef/laya-multilingual-mlx"
+    },
+    "weight_sha256": "7fc5834af4d8fdfb268d272a9d1a66e5819a0daac98241651c4c888cc43adff1"
+  },
+  "calibration": {
+    "source_config_sha256": "25061739243b617ad88d1219ba6f8a9c86c5881ca28df024fa2d9b3b2fcc30c6",
+    "temperature": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "temperature_by_options": {},
+    "source_config_equals_mlx_config": true
+  },
+  "thresholds": {
+    "option_max_abs_diff": 0.02,
+    "action_max_abs_diff": 0.02
+  },
+  "renderer": {
+    "common_sha256": "9ef0e51a61e73e10656b51f42de889e812ca22e422237dac1674bb1de019e7e9",
+    "agent_sha256": "51016a1e95648ad1beb22c8214927b1bb23cec9697f2d7e7339e01540e8553b7",
+    "coreml_tokenizer_sha256": "609d8f4c067cd3950f88594c5a802616cea245823836ef5848ee4fc40aab5b6f"
+  },
+  "cases": [
+    {
+      "id": "choice_refund",
+      "question_type": "choice",
+      "token_count": 35,
+      "marker_positions": [
+        11,
+        13,
+        16
+      ],
+      "option_count": 3,
+      "token_ids_equal": true,
+      "prompt": {
+        "request": {
+          "state": "I was charged twice for my order. Please refund the duplicate payment.",
+          "questions": {
+            "q": {
+              "type": "choice",
+              "instructions": "What does the customer want?",
+              "criteria": {
+                "refund": null,
+                "order status": null,
+                "technical help": null
+              }
+            }
+          }
+        },
+        "normalized_question": {
+          "t": "choice",
+          "ins": "What does the customer want?",
+          "crit": {
+            "refund": null,
+            "order status": null,
+            "technical help": null
+          }
+        },
+        "token_ids": [
+          2,
+          6241,
+          2872,
+          235292,
+          2439,
+          1721,
+          573,
+          6650,
+          1938,
+          235336,
+          1,
+          4,
+          19745,
+          4,
+          2184,
+          4938,
+          4,
+          9838,
+          1707,
+          1,
+          590,
+          729,
+          12497,
+          11594,
+          604,
+          970,
+          2184,
+          235265,
+          5651,
+          19745,
+          573,
+          38294,
+          7984,
+          235265,
+          1
+        ],
+        "tokens": [
+          "<bos>",
+          "\u2581choice",
+          "\u2581question",
+          ":",
+          "\u2581What",
+          "\u2581does",
+          "\u2581the",
+          "\u2581customer",
+          "\u2581want",
+          "?",
+          "<eos>",
+          "<mask>",
+          "\u2581refund",
+          "<mask>",
+          "\u2581order",
+          "\u2581status",
+          "<mask>",
+          "\u2581technical",
+          "\u2581help",
+          "<eos>",
+          "\u2581I",
+          "\u2581was",
+          "\u2581charged",
+          "\u2581twice",
+          "\u2581for",
+          "\u2581my",
+          "\u2581order",
+          ".",
+          "\u2581Please",
+          "\u2581refund",
+          "\u2581the",
+          "\u2581duplicate",
+          "\u2581payment",
+          ".",
+          "<eos>"
+        ],
+        "decoded_with_special_tokens": "<bos> choice question: What does the customer want?<eos><mask> refund<mask> order status<mask> technical help<eos> I was charged twice for my order. Please refund the duplicate payment.<eos>"
+      },
+      "token_ids_sha256": "9ca8ef59a6a5424c9c6b640f196ab3b2a5c236abc98cbd08d0703f227c5a91ae",
+      "temperature": 1.0,
+      "coreml": {
+        "option_probabilities": [
+          0.6628010601522079,
+          0.3289123465166233,
+          0.008286593331168846
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "raw_option_logits": [
+          1.4384765625,
+          0.73779296875,
+          -2.943359375
+        ],
+        "builtin_probability_vs_uncalibrated_softmax_max_diff": 0.00020340390220785487,
+        "first_predict_ms": 37.01729199383408,
+        "second_predict_ms": 9.002165999845602
+      },
+      "mlx_bucket_padded": {
+        "option_probabilities": [
+          0.6670197652010125,
+          0.3247621654962982,
+          0.008218069302689366
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "option_max_abs_diff": 0.004218705048804616,
+        "action_max_abs_diff": 0.0,
+        "option_argmax_agreement": true,
+        "action_argmax_agreement": true
+      },
+      "mlx_natural_length": {
+        "option_probabilities": [
+          0.6670197652010125,
+          0.3247621654962982,
+          0.008218069302689366
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "option_max_abs_diff": 0.004218705048804616,
+        "action_max_abs_diff": 0.0,
+        "option_argmax_agreement": true,
+        "action_argmax_agreement": true
+      },
+      "mlx_padded_ms": 91.66616700531449,
+      "mlx_natural_ms": 21.985625004163012,
+      "passed": true
+    },
+    {
+      "id": "score_outage",
+      "question_type": "score",
+      "token_count": 45,
+      "marker_positions": [
+        11,
+        17,
+        23
+      ],
+      "option_count": 3,
+      "token_ids_equal": true,
+      "prompt": {
+        "request": {
+          "state": "The application cannot start. Every user sees an error and cannot work.",
+          "questions": {
+            "q": {
+              "type": "score",
+              "instructions": "How severe is this issue?",
+              "criteria": [
+                "trivial",
+                "annoying",
+                "unusable"
+              ]
+            }
+          }
+        },
+        "normalized_question": {
+          "t": "score",
+          "ins": "How severe is this issue?",
+          "crit": [
+            "trivial",
+            "annoying",
+            "unusable"
+          ]
+        },
+        "token_ids": [
+          2,
+          7716,
+          2872,
+          235292,
+          2250,
+          14586,
+          603,
+          736,
+          4295,
+          235336,
+          1,
+          4,
+          2403,
+          235248,
+          235276,
+          235292,
+          49423,
+          4,
+          2403,
+          235248,
+          235274,
+          235292,
+          29943,
+          4,
+          2403,
+          235248,
+          235284,
+          235292,
+          177513,
+          1,
+          714,
+          4724,
+          2952,
+          2238,
+          235265,
+          7205,
+          2425,
+          17733,
+          671,
+          3333,
+          578,
+          2952,
+          1160,
+          235265,
+          1
+        ],
+        "tokens": [
+          "<bos>",
+          "\u2581score",
+          "\u2581question",
+          ":",
+          "\u2581How",
+          "\u2581severe",
+          "\u2581is",
+          "\u2581this",
+          "\u2581issue",
+          "?",
+          "<eos>",
+          "<mask>",
+          "\u2581level",
+          "\u2581",
+          "0",
+          ":",
+          "\u2581trivial",
+          "<mask>",
+          "\u2581level",
+          "\u2581",
+          "1",
+          ":",
+          "\u2581annoying",
+          "<mask>",
+          "\u2581level",
+          "\u2581",
+          "2",
+          ":",
+          "\u2581unusable",
+          "<eos>",
+          "\u2581The",
+          "\u2581application",
+          "\u2581cannot",
+          "\u2581start",
+          ".",
+          "\u2581Every",
+          "\u2581user",
+          "\u2581sees",
+          "\u2581an",
+          "\u2581error",
+          "\u2581and",
+          "\u2581cannot",
+          "\u2581work",
+          ".",
+          "<eos>"
+        ],
+        "decoded_with_special_tokens": "<bos> score question: How severe is this issue?<eos><mask> level 0: trivial<mask> level 1: annoying<mask> level 2: unusable<eos> The application cannot start. Every user sees an error and cannot work.<eos>"
+      },
+      "token_ids_sha256": "5d361e473f7a577aa168ef00ead284896d60d160ad6e7256a5ecc49c6ef055f2",
+      "temperature": 1.0,
+      "coreml": {
+        "option_probabilities": [
+          0.016472110045518167,
+          0.3467290539057594,
+          0.6367988360487224
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "raw_option_logits": [
+          -2.80859375,
+          0.23828125,
+          0.84619140625
+        ],
+        "builtin_probability_vs_uncalibrated_softmax_max_diff": 0.0005683672987224497,
+        "first_predict_ms": 19.80658300453797,
+        "second_predict_ms": 8.784125006059185
+      },
+      "mlx_bucket_padded": {
+        "option_probabilities": [
+          0.016497620464653057,
+          0.3454058361973355,
+          0.6380965433380114
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "option_max_abs_diff": 0.0013232177084239183,
+        "action_max_abs_diff": 0.0,
+        "option_argmax_agreement": true,
+        "action_argmax_agreement": true
+      },
+      "mlx_natural_length": {
+        "option_probabilities": [
+          0.016497620464653057,
+          0.3454058361973355,
+          0.6380965433380114
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "option_max_abs_diff": 0.0013232177084239183,
+        "action_max_abs_diff": 0.0,
+        "option_argmax_agreement": true,
+        "action_argmax_agreement": true
+      },
+      "mlx_padded_ms": 15.19620900216978,
+      "mlx_natural_ms": 15.184542004135437,
+      "passed": true
+    },
+    {
+      "id": "noul_delivery",
+      "question_type": "noul",
+      "token_count": 43,
+      "marker_positions": [
+        12,
+        22
+      ],
+      "option_count": 2,
+      "token_ids_equal": true,
+      "prompt": {
+        "request": {
+          "state": "The tracking page says the parcel was delivered this morning.",
+          "questions": {
+            "q": {
+              "type": "noul",
+              "instructions": "Has the parcel been delivered?"
+            }
+          }
+        },
+        "normalized_question": {
+          "t": "noul",
+          "ins": "Has the parcel been delivered?",
+          "crit": null
+        },
+        "token_ids": [
+          2,
+          552,
+          6311,
+          2872,
+          235292,
+          11562,
+          573,
+          33802,
+          1125,
+          13245,
+          235336,
+          1,
+          4,
+          1566,
+          235292,
+          793,
+          235269,
+          573,
+          6218,
+          1721,
+          780,
+          3385,
+          4,
+          1382,
+          235292,
+          7778,
+          235269,
+          573,
+          6218,
+          12723,
+          1,
+          714,
+          19233,
+          2602,
+          2889,
+          573,
+          33802,
+          729,
+          13245,
+          736,
+          5764,
+          235265,
+          1
+        ],
+        "tokens": [
+          "<bos>",
+          "\u2581n",
+          "oul",
+          "\u2581question",
+          ":",
+          "\u2581Has",
+          "\u2581the",
+          "\u2581parcel",
+          "\u2581been",
+          "\u2581delivered",
+          "?",
+          "<eos>",
+          "<mask>",
+          "\u2581false",
+          ":",
+          "\u2581no",
+          ",",
+          "\u2581the",
+          "\u2581statement",
+          "\u2581does",
+          "\u2581not",
+          "\u2581hold",
+          "<mask>",
+          "\u2581true",
+          ":",
+          "\u2581yes",
+          ",",
+          "\u2581the",
+          "\u2581statement",
+          "\u2581holds",
+          "<eos>",
+          "\u2581The",
+          "\u2581tracking",
+          "\u2581page",
+          "\u2581says",
+          "\u2581the",
+          "\u2581parcel",
+          "\u2581was",
+          "\u2581delivered",
+          "\u2581this",
+          "\u2581morning",
+          ".",
+          "<eos>"
+        ],
+        "decoded_with_special_tokens": "<bos> noul question: Has the parcel been delivered?<eos><mask> false: no, the statement does not hold<mask> true: yes, the statement holds<eos> The tracking page says the parcel was delivered this morning.<eos>"
+      },
+      "token_ids_sha256": "ed6babddfa17bcc22bef08a68818b832c3041743a0f3e947326b0b08335c0806",
+      "temperature": 1.0,
+      "coreml": {
+        "option_probabilities": [
+          0.016569291745697497,
+          0.9834307082543026
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "raw_option_logits": [
+          -3.263671875,
+          0.81982421875
+        ],
+        "builtin_probability_vs_uncalibrated_softmax_max_diff": 0.00045601049569743424,
+        "first_predict_ms": 18.828457992640324,
+        "second_predict_ms": 9.5560839981772
+      },
+      "mlx_bucket_padded": {
+        "option_probabilities": [
+          0.016379415500966908,
+          0.9836205844990331
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "option_max_abs_diff": 0.0001898762447305885,
+        "action_max_abs_diff": 0.0,
+        "option_argmax_agreement": true,
+        "action_argmax_agreement": true
+      },
+      "mlx_natural_length": {
+        "option_probabilities": [
+          0.016379415500966908,
+          0.9836205844990331
+        ],
+        "action_probabilities": [
+          1.0,
+          0.0
+        ],
+        "option_max_abs_diff": 0.0001898762447305885,
+        "action_max_abs_diff": 0.0,
+        "option_argmax_agreement": true,
+        "action_argmax_agreement": true
+      },
+      "mlx_padded_ms": 92.43162500206381,
+      "mlx_natural_ms": 11.760832989239134,
+      "passed": true
+    }
+  ],
+  "complete": true,
+  "passed": true
+}
