@@ -29,7 +29,7 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 <details>
 <summary>Inside the burst</summary>
 
-**Watch the backends race:** [the three-lane demo](docs/assets/race-demo.mp4) fires the same headline at all three backends concurrently — a 4-call burst each at ANE and MLX plus one real paid Jev call, every marker at its server-measured latency on one shared scale. ANE drains in a tight cluster; MLX stair-steps as calls serialize on the bridge; the API call lands a few hundred milliseconds later, having crossed the internet. Same checkpoint on all three; redirects land on the answering backend's lane as hollow rings. Source: `race.html`/`race.js` in the same directory.
+**Watch the backends race:** [the three-lane demo](docs/assets/race-demo.mp4) fires the same headline at all three backends concurrently — a 4-call burst each at ANE and MLX plus one real paid Jev call, every marker at its server-measured latency on one shared scale. ANE drains in a tight cluster; MLX stair-steps as calls serialize on the bridge; the API call lands a few hundred milliseconds later, having crossed the internet. The axis always runs to the slowest answer of the session. Every marker stays on the row you asked for; a rerouted call shows as a hollow ring in the answering backend's color (asked ANE, answered MLX → hollow teal on the ANE row). Source: `race.html`/`race.js` in the same directory.
 
 </details>
 

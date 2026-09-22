@@ -28,6 +28,7 @@ const controllers = new Set();
 let generation = 0, queue = [], current = null, roundNumber = 0;
 let paused = false, loading = true, loadError = "", lastFrame = 0;
 let scores = { ane: 0, mlx: 0, jev: 0 }, samples = { ane: [], mlx: [], jev: [] };
+let sessionMaxMs = 0;
 
 function headlineOf(text) {
   const i = text.search(/[.!?]\s/);
@@ -39,6 +40,7 @@ function reset() {
   controllers.clear();
   queue = []; current = null; roundNumber = 0; paused = false; loading = true; loadError = "";
   scores = { ane: 0, mlx: 0, jev: 0 }; samples = { ane: [], mlx: [], jev: [] };
+  sessionMaxMs = 0;
   const controller = new AbortController(); controllers.add(controller);
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   fetch(ITEMS, { signal: controller.signal })
@@ -107,6 +109,9 @@ function dispatchCall(round, lane, call) {
       call.receipt = { backend: route.backend, ms: Math.round(route.latency_ms),
                        conf: ans.confidence, ckpt: route.checkpoint || "—" };
       call.serverMs = route.latency_ms;
+      // Only validated, current-generation receipts can grow the shared axis.
+      // Keep the exact maximum through subsequent rounds; R starts a session.
+      sessionMaxMs = Math.max(sessionMaxMs, call.serverMs);
       call.choice = ans.choice;
       call.correct = ans.choice === round.row.label;
       call.escalated = !!route.escalated || (route.backend === "jev" && lane.key !== "jev");
@@ -146,11 +151,6 @@ function laneStats(lane) {
     serverSpan: span(measured.map(call => call.serverMs)),
     arrivalSpan: span(settled.map(call => call.finishedAt)),
   };
-}
-function serverScale(round) {
-  const max = Math.max(1000, ...round.lanes.flatMap(lane => lane.calls.map(call => call.serverMs || 0)));
-  const step = 10 ** Math.floor(Math.log10(max));
-  return Math.ceil(max / step) * step;
 }
 function median(values) {
   if (!values.length) return null;
@@ -197,29 +197,20 @@ function actualCalls(key, settledOnly = false) {
     .sort((a, b) => a.arrivalOrder - b.arrivalOrder);
 }
 function redirected(call) {
-  return call.receipt.backend !== call.key || call.fallback || call.escalated;
+  return !call.native;
 }
 function lanePresentation(lane) {
-  const received = actualCalls(lane.key);
-  const incoming = received.filter(call => call.key !== lane.key);
-  const own = lane.calls.filter(call => call.state !== "done" || call.receipt.backend === lane.key)
-    .sort((a, b) => (a.arrivalOrder || Infinity) - (b.arrivalOrder || Infinity) || a.id - b.id)
-    .map(call => ({ call }));
-  // Source-side notices have no timing/dot. The actual receipt lives only at
-  // its destination, and these notices merely account for the missing calls.
-  const outgoing = new Map();
-  lane.calls.filter(call => call.state === "done" && call.receipt.backend !== lane.key)
-    .forEach(call => outgoing.set(call.receipt.backend, (outgoing.get(call.receipt.backend) || 0) + 1));
-  outgoing.forEach((count, key) => own.push({ outgoing: key, count }));
-  return { received, own, incoming, serverSpan: span(received.map(call => call.serverMs)) };
+  // Rows identify the request, never the destination. Color and ring style
+  // identify who answered without moving the receipt onto somebody else's row.
+  const calls = [...lane.calls].sort((a, b) => (a.arrivalOrder || Infinity) - (b.arrivalOrder || Infinity) || a.id - b.id);
+  const received = calls.filter(call => call.state === "done");
+  return { calls, received, serverSpan: span(received.map(call => call.serverMs)) };
 }
 function playfieldLayout() {
   return { laneY: [278, 404, 530], rowStep: 18, cardHeight: 110, font: 23, lineHeight: 24 };
 }
 function sharedScale() {
-  // All three actual-backend lanes use the same server-ms axis. A slow API
-  // receipt must occupy proportionally more distance than a local receipt.
-  return serverScale({ lanes: [{ calls: BACKENDS.flatMap(key => actualCalls(key)) }] });
+  return sessionMaxMs;
 }
 function headline(value, layout) {
   cx.beginPath(); cx.roundRect(32, 116, 656, layout.cardHeight, 12);
@@ -239,7 +230,7 @@ function callNote(call) {
   if (call.state === "pending") return "";
   if (call.state === "busy") return "busy · 429";
   if (call.state === "error") return call.error;
-  const identity = call.receipt.backend !== call.key ? `←${BACKEND_LABEL[call.key]}`
+  const identity = call.receipt.backend !== call.key ? `→${BACKEND_LABEL[call.receipt.backend]}`
     : call.escalationError ? "Jev failed" : call.fallback ? "fallback"
     : !call.native ? call.receipt.ckpt : "";
   return [`${call.receipt.ms} ms`, identity, call.correct ? "" : "wrong"].filter(Boolean).join(" · ");
@@ -249,17 +240,23 @@ function callColor(call) {
   if (call.state === "error" || !call.correct) return UI.red;
   return COLOR[call.receipt.backend];
 }
-function drawReceiptMarker(call, x, y, color = callColor(call)) {
+function drawReceiptMarker(call, x, y, color = COLOR[call.receipt.backend]) {
+  // Answerer color is stable even on a wrong answer; red labels, row flash
+  // and bin borders carry correctness without erasing the backend identity.
   if (!redirected(call)) return dot(x, y, color, 4);
   // Transparent ring, not a filled fake-native dot. Coincident native dots
   // remain visible inside the ring when two real timings are exactly equal.
   cx.beginPath(); cx.arc(x, y, 7, 0, Math.PI * 2);
   cx.strokeStyle = color; cx.lineWidth = 2.5; cx.stroke();
 }
-function drawConnections(key, y, index, layout) {
+function drawConnections(lane, y, index) {
+  if (lane.state !== "done") return;
   const choices = new Map();
-  actualCalls(key, true).forEach(call => choices.set(call.choice, callColor(call)));
-  choices.forEach((color, choice) => {
+  lane.calls.filter(call => call.state === "done").forEach(call => {
+    const key = `${call.choice}:${call.receipt.backend}`;
+    choices.set(key, { choice: call.choice, color: COLOR[call.receipt.backend] });
+  });
+  choices.forEach(({ color, choice }) => {
     const bin = LABELS.indexOf(choice), targetX = 109.5 + bin * 167 + (index - 1) * 6;
     const elbowX = [708, 700, 692][index];
     const elbowY = [611, 615, 619][index];
@@ -279,9 +276,9 @@ function drawLane(lane, index, now, scale, layout) {
   }
   text(BACKEND_LABEL[lane.key], 32, y - 22, 24, COLOR[lane.key], true, "left", 600);
   const elapsed = Math.floor(Math.max(0, now - current.startedAt));
-  // Local bursts retain their measured span. The API's single requested call
-  // displays its own latency, never a zero span or an incoming escalation.
-  const apiReceipt = lane.key === "jev" && lane.calls.find(call => call.state === "done" && call.receipt.backend === "jev");
+  // Local spans and the API's single latency describe this requested row,
+  // including redirects. Native-only p50/score remain separate above.
+  const apiReceipt = lane.key === "jev" && view.received[0];
   const metric = lane.key === "jev" ? apiReceipt ? apiReceipt.serverMs : null : view.serverSpan;
   const server = metric === null ? "—" : Math.round(metric);
   text(`${pending ? elapsed : server} ms`, 360, y - 22, 34, UI.text, true, "center", 500);
@@ -296,37 +293,31 @@ function drawLane(lane, index, now, scale, layout) {
     cx.globalAlpha = paused || reducedMotion.matches ? 0.6 : 0.55 + 0.35 * Math.sin(lane.motionMs / 180);
     dot(46, y, COLOR[lane.key], 3); cx.globalAlpha = 1;
   }
-  // Up to nine receipts can converge on one backend. Keep at most four rows
-  // per column, preserving distinct native/source columns without overflow.
-  const groups = [view.own, view.incoming.map(call => ({ call }))], columns = [];
-  groups.forEach(entries => {
-    for (let i = 0; i < entries.length; i += 4) columns.push({ entries: entries.slice(i, i + 4) });
-  });
-  const columnWidth = (end - start + 20) / Math.max(1, columns.length);
-  columns.forEach((column, i) => { column.left = start + i * columnWidth; column.right = start + (i + 1) * columnWidth - 20; });
   const labels = [];
-  columns.forEach(column => column.entries.forEach(({ call, outgoing, count }, row) => {
+  view.calls.forEach((call, row) => {
     const labelY = y + 20 + row * layout.rowStep;
-    const color = outgoing ? UI.muted : callColor(call);
-    const isRedirect = !outgoing && call.state === "done" && redirected(call);
+    const color = callColor(call);
+    const isRedirect = call.state === "done" && redirected(call);
     const size = isRedirect ? 17 : 16, weight = isRedirect ? 650 : 500;
     cx.font = `${weight} ${size}px ${UI.mono}`;
-    const label = fitText(outgoing ? `→ ${BACKEND_LABEL[outgoing]} ×${count}` : callNote(call), column.right - column.left - 8);
+    const label = fitText(callNote(call), end - start - 8);
     const width = cx.measureText(label).width;
-    if (outgoing || call.state !== "done") {
-      // A redirect notice, busy or error has no receipt for THIS backend.
-      if (!outgoing && call.state !== "pending") dot(column.left - 18, labelY - 5, color, 3);
-      labels.push({ label, x: column.left, y: labelY, width, color, size, weight });
+    if (call.state !== "done") {
+      // Busy and errors have no measured latency and stay off the time axis.
+      if (call.state !== "pending") dot(start - 18, labelY - 5, color, 3);
+      labels.push({ label, x: start, y: labelY, width, color, size, weight });
       return;
     }
-    const markerX = start + (end - start) * call.serverMs / scale;
-    const labelX = Math.max(column.left, Math.min(markerX + 10, column.right - width));
+    // Empty/zero-only sessions have a zero-width time domain. Avoid 0/0,
+    // without imposing an artificial floor once a positive receipt arrives.
+    const markerX = start + (end - start) * call.serverMs / (scale || 1);
+    const labelX = Math.max(start, Math.min(markerX + 10, end - width));
     const leaderX = labelX >= markerX ? labelX - 4 : labelX + width + 4;
     line(markerX, y + 8, markerX, labelY - 5, color + "55", 1);
     line(markerX, labelY - 5, leaderX, labelY - 5, color + "55", 1);
     drawReceiptMarker(call, markerX, y);
     labels.push({ label, x: labelX, y: labelY, width, color, size, weight });
-  }));
+  });
   // Draw labels after every leader so clustered response stems cannot strike
   // through an earlier label. Exact marker positions remain unchanged.
   labels.forEach(({ label, x, y, width, color, size, weight }) => {
@@ -334,7 +325,7 @@ function drawLane(lane, index, now, scale, layout) {
     cx.fillStyle = UI.bg; cx.fillRect(x - 2, y - 15, width + 4, 19);
     text(label, x, y, size, color, true, "left", weight);
   });
-  drawConnections(lane.key, y, index, layout);
+  drawConnections(lane, y, index);
 }
 function binHighlights(label) {
   return BACKENDS
@@ -344,7 +335,7 @@ function binHighlights(label) {
 function drawBin(label, index) {
   const x = 32 + index * 167, y = 622, width = 155, height = 70;
   const highlights = binHighlights(label), active = highlights.length > 0;
-  // Fill shares and connector origins follow the actual answering backend.
+  // Bin colors identify actual answerers; connectors originate on request rows.
   if (active) {
     const laneWidth = width / highlights.length;
     highlights.forEach((lane, i) => {
