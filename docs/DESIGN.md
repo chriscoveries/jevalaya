@@ -352,11 +352,19 @@ The router has a pure decision phase followed by execution/escalation. No weight
 6. ANE runtime fallback invokes one CoreML agent. Only ANECapacity or ANEShape releases/resets ANE and retries once on MLX using the same Multilingual checkpoint. Returned metadata has backend=mlx, fallback=true, fallback_from=ane, MLX model_id, original token_count, and ane_eligible=true. Hard ANE errors never retry.
 7. Jev escalation occurs after local output:
    - auto mode uses configurable confidence and margin thresholds; the primary trigger is top_p - second_p below the configured margin, with optional confidence and target-confidence gates;
+   - thresholds are per serving backend (T022): `[policy.thresholds.ane]` / `[policy.thresholds.mlx]` carry `margin`, `confidence`, and `target_confidence`, each field inheriting the global `[jev]` keys when absent. A request that fell back ANE→MLX is judged by the MLX gates — the backend that produced the answer owns the calibration;
    - escalation also fires after a local backend retry when jev.escalate_on_retry=true;
    - explicit backend=jev always calls Jev;
    - successful escalation returns Jev answers with backend=jev, escalated=true, jev_trigger, and total latency;
    - compare mode fans out to two or all three selected backends and returns every normalized answer plus per-backend routing;
    - when Jev is unreachable in auto mode, retain the validated local answer with degraded=true and escalation_error. An explicit Jev request remains a 502/503.
+
+Escalation calibration is v0 and deliberately per backend: the confidence scales are not comparable across runtimes (verified sweeps in tools/bench/results show ANE confidence mean ~0.94 vs MLX ~0.81-0.87 at similar accuracy, so a shared conf<0.75 gate escalated ~28% of MLX traffic vs ~8.5% of ANE). Seeded values — margin primary, confidence secondary:
+
+- `[policy.thresholds.ane]` margin=0.2, confidence=0.6. ANE runs hot; margin<0.2 alone isolates ~1% of traffic at ~0.61 accuracy, and conf<0.6 adds the ~4% below-scale tail at ~0.60 accuracy. Estimated ~5% escalation vs ~8.5% under the old global gates, better targeted.
+- `[policy.thresholds.mlx]` margin=0.3, confidence=0.6. MLX margins run colder; the 0.2-0.3 band is still ~half-wrong (esc_acc ~0.49-0.51), so the wider margin gate pays for itself, while conf<0.6 covers the confident-wrong tail (~14-20% of traffic at ~0.62-0.68 accuracy). Estimated ~16-25% escalation vs ~28-39% under the globals. The accuracy-first alternative is confidence=0.7, which buys ~+1-2 points of kept-accuracy for ~+8-10 points of escalation spend.
+
+These are round-number v0 picks from the sweep grids, not fitted optima; re-derive per deployment with the same tooling before trusting them.
 
 ## Backend implementations
 

@@ -709,6 +709,137 @@ async fn jev_escalation_failure_keeps_local_answer() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn per_backend_thresholds_judge_the_serving_backend() {
+    // T022: identical answer (conf .65, margin .90) — under ANE gates
+    // (conf .6 / margin .2) it is kept; under MLX gates (conf .7 / margin
+    // .3) it escalates. Confidence scales differ per runtime; the serving
+    // backend owns the calibration.
+    let mut cfg = cfg_with_ane();
+    cfg.thresholds.ane = Some(BackendThresholds {
+        confidence: Some(0.6),
+        margin: Some(0.2),
+        ..Default::default()
+    });
+    cfg.thresholds.mlx = Some(BackendThresholds {
+        confidence: Some(0.7),
+        margin: Some(0.3),
+        ..Default::default()
+    });
+
+    // ANE-served (DE + fit): kept, no escalation.
+    let ane = MockBackend::ok(BackendKind::Ane, 0.65, (0.95, 0.05));
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.65, (0.95, 0.05));
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Ane, ane.clone());
+    backends.insert(BackendKind::Mlx, mlx.clone());
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg.clone(),
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Ane, BackendKind::Mlx, BackendKind::Jev],
+    );
+    let out = r.predict(body(json!(DE), "auto")).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Ane);
+    assert!(!out.routing.escalated);
+    assert_eq!(jev.calls(), 0);
+
+    // MLX-served (model=english pin → ANE never in play): same answer
+    // crosses the MLX confidence gate → escalates.
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.65, (0.95, 0.05));
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Ane, MockBackend::ok(BackendKind::Ane, 0.9, (0.9, 0.1)));
+    backends.insert(BackendKind::Mlx, mlx.clone());
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg,
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Ane, BackendKind::Mlx, BackendKind::Jev],
+    );
+    let b: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": question(), "model": "english",
+    }))
+    .unwrap();
+    let out = r.predict(b).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Jev);
+    assert!(out.routing.escalated);
+    assert_eq!(
+        out.routing.jev_trigger.as_deref(),
+        Some(trigger::LOW_CONFIDENCE)
+    );
+    assert_eq!(jev.calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn missing_threshold_table_falls_back_to_global() {
+    // No [policy.thresholds.*] tables → the [jev] global keys (0.75 /
+    // 0.20 / 0.85 defaults) judge every backend, exactly as pre-T022.
+    let ane = MockBackend::ok(BackendKind::Ane, 0.7, (0.9, 0.1)); // conf .7 < .75
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.9, (0.9, 0.1));
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Ane, ane);
+    backends.insert(BackendKind::Mlx, mlx);
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg_with_ane(),
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Ane, BackendKind::Mlx, BackendKind::Jev],
+    );
+    let out = r.predict(body(json!(DE), "auto")).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Jev);
+    assert_eq!(
+        out.routing.jev_trigger.as_deref(),
+        Some(trigger::LOW_CONFIDENCE)
+    );
+    assert_eq!(jev.calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn ane_mlx_fallback_is_judged_by_mlx_gates() {
+    // ANE margin gate is .2, MLX's is .3. ANE fails → MLX answers with
+    // margin .25: kept under ANE calibration, escalated under MLX's —
+    // the serving backend's gates win.
+    let mut cfg = cfg_with_ane();
+    cfg.thresholds.ane = Some(BackendThresholds {
+        margin: Some(0.2),
+        ..Default::default()
+    });
+    cfg.thresholds.mlx = Some(BackendThresholds {
+        margin: Some(0.3),
+        ..Default::default()
+    });
+    let ane = MockBackend::scripted(
+        BackendKind::Ane,
+        vec![Err(BackendError::Capacity("pressure".into()))],
+    );
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.9, (0.625, 0.375)); // margin .25
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Ane, ane);
+    backends.insert(BackendKind::Mlx, mlx);
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg,
+        Arc::new(ScriptedEngine::new(50, 50)),
+        backends,
+        vec![BackendKind::Ane, BackendKind::Mlx, BackendKind::Jev],
+    );
+    let out = r.predict(body(json!(DE), "auto")).await.unwrap();
+    let d = &out.routing;
+    assert!(d.fallback);
+    assert_eq!(d.fallback_from, Some(BackendKind::Ane));
+    assert_eq!(d.backend, BackendKind::Jev);
+    assert!(d.escalated);
+    assert_eq!(d.jev_trigger.as_deref(), Some(trigger::LOW_MARGIN));
+    assert_eq!(jev.calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn escalate_on_retry_fires_jev() {
     let mut cfg = cfg_with_ane();
     cfg.jev.escalate_on_retry = true;

@@ -112,6 +112,34 @@ impl Default for JevPolicy {
     }
 }
 
+/// Escalation gates for one serving backend (`[policy.thresholds.<name>]`
+/// — `ane`, `mlx`; Jev is the escalation target and has no gates). Each
+/// field left unset inherits the global `[jev]` threshold — there is no
+/// per-backend "disable"; clear the global to disable a gate entirely.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct BackendThresholds {
+    /// Escalate when min answer confidence is below this.
+    #[serde(default)]
+    pub confidence: Option<f64>,
+    /// Primary trigger: escalate when min top-two margin is below this.
+    #[serde(default)]
+    pub margin: Option<f64>,
+    /// Escalate when any answer's `target_confidence` is below this.
+    #[serde(default)]
+    pub target_confidence: Option<f64>,
+}
+
+/// Per-backend escalation thresholds (`[policy.thresholds]`). Tables are
+/// optional; a missing table or field resolves to the global `[jev]`
+/// keys (backward compatible with a thresholds-free config).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ThresholdsPolicy {
+    #[serde(default)]
+    pub ane: Option<BackendThresholds>,
+    #[serde(default)]
+    pub mlx: Option<BackendThresholds>,
+}
+
 /// Immutable routing snapshot: a request sees exactly one of these.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicyConfig {
@@ -131,6 +159,9 @@ pub struct PolicyConfig {
     /// Backend set for `compare=true` (explicit lists bypass this).
     #[serde(default = "default_compare_backends")]
     pub compare_backends: Vec<BackendKind>,
+    /// Per-backend escalation gates (`[policy.thresholds]`).
+    #[serde(default)]
+    pub thresholds: ThresholdsPolicy,
 }
 
 fn default_checkpoint() -> Checkpoint {
@@ -146,6 +177,7 @@ impl Default for PolicyConfig {
             ane: AnePolicy::default(),
             jev: JevPolicy::default(),
             compare_backends: default_compare_backends(),
+            thresholds: ThresholdsPolicy::default(),
         }
     }
 }
@@ -157,5 +189,24 @@ impl PolicyConfig {
             .get(&cp)
             .cloned()
             .unwrap_or_else(|| cp.as_str().to_string())
+    }
+
+    /// Escalation thresholds for the *serving* backend (T022): a request
+    /// that fell back ANE→MLX is judged by MLX gates. Each field falls
+    /// back to the global `[jev]` key when the backend table omits it.
+    pub fn escalation_thresholds(&self, backend: BackendKind) -> BackendThresholds {
+        let table = match backend {
+            BackendKind::Ane => self.thresholds.ane,
+            BackendKind::Mlx => self.thresholds.mlx,
+            BackendKind::Jev => None,
+        };
+        let t = table.unwrap_or_default();
+        BackendThresholds {
+            confidence: t.confidence.or(self.jev.confidence_threshold),
+            margin: t.margin.or(self.jev.margin_threshold),
+            target_confidence: t
+                .target_confidence
+                .or(self.jev.target_confidence_threshold),
+        }
     }
 }

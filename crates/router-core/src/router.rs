@@ -10,7 +10,7 @@ use std::time::Instant;
 use futures::future::join_all;
 use serde_json::{json, Map, Value};
 
-use crate::config::{JevPolicy, PolicyConfig};
+use crate::config::{BackendThresholds, PolicyConfig};
 use crate::decision::{reason, trigger, RouteDecision};
 use crate::engine::PromptEngine;
 use crate::errors::RouteError;
@@ -77,29 +77,32 @@ fn min_answer_field(questions: &Map<String, Value>, answers: &Value, field: &str
 }
 
 /// Escalation triggers in stable priority order (margin is primary).
+/// `thresholds` are resolved per *serving* backend — an ANE→MLX fallback
+/// answer is judged by MLX gates (T022).
 fn jev_trigger_for(
     conf: Option<f64>,
     margin: Option<f64>,
     target_conf: Option<f64>,
     retried: bool,
-    jev: &JevPolicy,
+    thresholds: &BackendThresholds,
+    escalate_on_retry: bool,
 ) -> Option<&'static str> {
-    if let (Some(m), Some(t)) = (margin, jev.margin_threshold) {
+    if let (Some(m), Some(t)) = (margin, thresholds.margin) {
         if m < t {
             return Some(trigger::LOW_MARGIN);
         }
     }
-    if let (Some(c), Some(t)) = (conf, jev.confidence_threshold) {
+    if let (Some(c), Some(t)) = (conf, thresholds.confidence) {
         if c < t {
             return Some(trigger::LOW_CONFIDENCE);
         }
     }
-    if let (Some(tc), Some(t)) = (target_conf, jev.target_confidence_threshold) {
+    if let (Some(tc), Some(t)) = (target_conf, thresholds.target_confidence) {
         if tc < t {
             return Some(trigger::LOW_TARGET_CONFIDENCE);
         }
     }
-    if retried && jev.escalate_on_retry {
+    if retried && escalate_on_retry {
         return Some(trigger::RETRY);
     }
     None
@@ -276,9 +279,17 @@ impl Router {
             && matches!(plan.decision.backend, BackendKind::Ane | BackendKind::Mlx)
             && self.configured.contains(&BackendKind::Jev)
         {
-            if let Some(trig) =
-                jev_trigger_for(conf, margin, target_conf, plan.decision.fallback, &cfg.jev)
-            {
+            // The serving backend's gates — after an ANE→MLX fallback
+            // `decision.backend` is already Mlx.
+            let thresholds = cfg.escalation_thresholds(plan.decision.backend);
+            if let Some(trig) = jev_trigger_for(
+                conf,
+                margin,
+                target_conf,
+                plan.decision.fallback,
+                &thresholds,
+                cfg.jev.escalate_on_retry,
+            ) {
                 plan.decision.escalated = true;
                 plan.decision.jev_trigger = Some(trig.to_string());
                 if avail.jev {

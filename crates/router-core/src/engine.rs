@@ -150,7 +150,7 @@ impl PromptEngine for LayaPromptEngine {
             .ane
             .as_ref()
             .ok_or_else(|| RouteError::NotReady("ane tokenizer unavailable".to_string()))?;
-        gate_counts(&ane.tok, state, q, ane.budgets.head_max_len, ane.alignment).map_err(render_err)
+        gate_counts(&ane.tok, state, q, ane.budgets.max_len, ane.budgets.head_max_len, ane.alignment).map_err(render_err)
     }
 
     fn ane_render(
@@ -188,7 +188,7 @@ impl PromptEngine for LayaPromptEngine {
         let e = self.checkpoints.get(&checkpoint).ok_or_else(|| {
             RouteError::NotReady(format!("{} tokenizer unavailable", checkpoint.as_str()))
         })?;
-        gate_counts(&e.tok, state, q, e.budgets.head_max_len, 1).map_err(render_err)
+        gate_counts(&e.tok, state, q, e.budgets.max_len, e.budgets.head_max_len, 1).map_err(render_err)
     }
 
     fn execution_len(
