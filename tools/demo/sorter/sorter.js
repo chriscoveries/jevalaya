@@ -1,11 +1,13 @@
 "use strict";
-/* jevalaya sorter — a consumer proving live routing, honestly.
- * Headlines fall; each is one choice call to /predict. Short items pin the
+/* jevalaya snake — classification with a scripted presentation, not spatial AI.
+ * Each headline is one choice call to /predict. Short items pin the
  * multilingual checkpoint (labeled MULTI-pinned; the T023 fit gate routes it
  * to ANE when it fits the bundle's budget); full-text items run pure auto.
  * reports the receipt verbatim — backend, latency, checkpoint, confidence —
  * plus a lane strip of the last decisions. Lag-switch delays ACTING on the
- * answer (simulated network); the receipt still shows the true latency. */
+ * answer (simulated network); the receipt still shows the true latency.
+ * The legacy item.y/frame clock still owns deadlines and scoring. Snake
+ * paths are rendering only: they cannot choose a bin or change an outcome. */
 const Q = new URLSearchParams(location.search);
 const CFG = Object.assign({ url: "", token: "" }, window.JEVALAYA || {});
 if (Q.get("url")) CFG.url = Q.get("url");
@@ -24,6 +26,8 @@ const UI = {
   mono: 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace',
 };
 const FALL_PX_S = 230;
+const visualRounds = new WeakMap();
+const motionPreference = matchMedia("(prefers-reduced-motion: reduce)");
 
 let queue, item, score, streak, decided, correct, jevCalls, lanes, latHist;
 let lagMs, goldenArmed, paused, last, gapT;
@@ -111,7 +115,7 @@ function frame(t) {
   draw();
 }
 // Presentation helpers only. Request, timing, scoring and key handling above/below
-// are unchanged; simulation coordinates are mapped into the visible card stage.
+// are unchanged; simulation coordinates are only a clock for snake presentation.
 function text(value, x, y, size = 14, color = UI.text, weight = 400, mono = false) {
   cx.font = `${weight} ${size}px ${mono ? UI.mono : UI.sans}`;
   cx.fillStyle = color; cx.textAlign = "left"; cx.textBaseline = "alphabetic";
@@ -164,27 +168,25 @@ function brandMark(x, y) {
 function draw() {
   cx.clearRect(0, 0, W, H);
   cx.fillStyle = UI.bg; cx.fillRect(0, 0, W, H);
-  // A quiet stage keeps motion separate from the receipt and its true latency.
+  // The article stays at the top; the arena below visualizes a returned choice.
   panel(24, 225, 1232, 349, UI.bg);
   line(24, 275, 1256, 275);
-  cx.save(); cx.setLineDash([3, 7]);
-  line(W / 2, 291, W / 2, 555, UI.line);
-  cx.restore();
-  text("IN", 45, 307, 11, UI.muted, 500, true);
-  text("OUT", 45, 555, 11, UI.muted, 500, true);
+  for (let y = 442; y < 568; y += 24) {
+    for (let x = 48; x < 1240; x += 24) dot(x, y, "#21262d", 0.7);
+  }
+  text("SCRIPTED MOTION / LIVE DECISION", 44, 423, 11, UI.muted, 500, true);
+  const deadline = BIN_Y - 110;
+  const remaining = item ? Math.max(0, (deadline - item.y) / FALL_PX_S) : 0;
+  text(item ? item.result ? "ROUND CLOSED" : `FOOD WINDOW  ${remaining.toFixed(1)} s` : "AWAITING ARTICLE", 1060, 423, 11, UI.muted, 500, true);
   // The destination gets the backend's lane color, never a made-up backend.
   const binW = 299, binGap = 12;
   LABELS.forEach((lab, i) => {
     const x = 24 + i * (binW + binGap);
-    const selected = item && item.answered && item.target === lab;
+    const selected = item && item.answered && item.result !== "miss" && item.target === lab;
     const color = selected ? backendColor() : UI.line;
-    if (selected) {
-      cx.beginPath(); cx.moveTo(W / 2, 575); cx.lineTo(W / 2, 584);
-      cx.lineTo(x + binW / 2, 584); cx.lineTo(x + binW / 2, BIN_Y - 7);
-      cx.strokeStyle = color; cx.lineWidth = 1.5; cx.stroke();
-      line(x + binW / 2 - 4, BIN_Y - 11, x + binW / 2, BIN_Y - 7, color);
-      line(x + binW / 2 + 4, BIN_Y - 11, x + binW / 2, BIN_Y - 7, color);
-    }
+    line(x + binW / 2, 578, x + binW / 2, BIN_Y - 7, color);
+    cx.beginPath(); cx.ellipse(x + binW / 2, 559, 28, 8, 0, 0, Math.PI * 2);
+    cx.strokeStyle = color + "66"; cx.lineWidth = 1.5; cx.stroke();
     panel(x, BIN_Y, binW, BIN_H, selected ? color + "14" : UI.panel, color);
     text(`0${i + 1}`, x + 18, BIN_Y + 25, 12, selected ? color : UI.muted, 500, true);
     text(lab, x + 18, BIN_Y + 55, 24, UI.text, 600);
@@ -195,36 +197,155 @@ function draw() {
       text(mark, x + binW - 41, BIN_Y + 51, 21, item.result === "wrong" ? UI.red : color, 500);
     }
   });
-  if (item) drawCard();
+  if (item) { drawCard(); drawSnakeRound(); }
   else {
-    brandMark(624, 388);
-    text("Ready for the next decision", 481, 435, 22, UI.soft, 500);
-    text("One article in. One typed answer out.", 478, 462, 14, UI.muted);
+    text("The next headline is on its way", 473, 334, 22, UI.soft, 500);
+    text("A real topic choice. A scripted journey to the food.", 461, 361, 14, UI.muted);
+    paintSnake(coilPoints(), UI.muted);
   }
   overlay();
 }
 function drawCard() {
-  const progress = Math.max(0, Math.min(1, (item.y + 90) / (BIN_Y - 20)));
-  const x = 272, y = 290 + progress * 114, w = 736, h = 150;
+  const x = 44, y = 286, w = 1192, h = 112;
   const color = item.golden ? LANE.jev : item.answered ? backendColor() : UI.muted;
   const border = item.result === "ok" ? LANE.mlx : item.result === "wrong" || item.result === "miss" ? UI.red : color;
-  cx.save(); cx.shadowColor = "#00000050"; cx.shadowBlur = 22; cx.shadowOffsetY = 7;
-  panel(x, y, w, h, UI.raised, null); cx.restore();
   panel(x, y, w, h, UI.raised, border);
-  line(x + 18, y + 15, x + 18, y + 32, color, 2);
-  text(`ARTICLE ${String(item.id).slice(0, 28)}`, x + 29, y + 28, 12, UI.muted, 500, true);
+  line(x + 18, y + 12, x + 18, y + 26, color, 2);
+  text(`ARTICLE ${String(item.id).slice(0, 28)}`, x + 29, y + 23, 11, UI.muted, 500, true);
   const target = item.target || "Awaiting answer";
   cx.font = `500 13px ${UI.sans}`;
   const targetW = cx.measureText(target).width;
-  text(target, x + w - 24 - targetW, y + 28, 13, item.answered ? color : UI.muted, 500);
-  cx.font = `500 22px ${UI.sans}`; cx.fillStyle = UI.text;
-  wrapText(item.text.slice(0, 170), x + 24, y + 59, w - 48, 26, 3);
-  line(x + 24, y + 122, x + w - 24, y + 122);
-  text(item.tag, x + 24, y + 141, 12, item.golden ? LANE.jev : UI.muted, 400, true);
+  text(target, x + w - 24 - targetW, y + 23, 13, item.answered ? color : UI.muted, 500);
+  cx.font = `500 21px ${UI.sans}`; cx.fillStyle = UI.text;
+  wrapText(item.text.slice(0, 170), x + 24, y + 49, w - 48, 25, 2);
+  text(item.tag, x + 24, y + 99, 11, item.golden ? LANE.jev : UI.muted, 400, true);
   if (item.receipt) {
     const receipt = `${item.receipt.backend.toUpperCase()} · ${item.receipt.ms} ms`;
     cx.font = `500 12px ${UI.mono}`;
-    text(receipt, x + w - 24 - cx.measureText(receipt).width, y + 141, 12, color, 500, true);
+    text(receipt, x + w - 24 - cx.measureText(receipt).width, y + 99, 12, color, 500, true);
+  }
+}
+function clamp01(value) { return Math.max(0, Math.min(1, value)); }
+function coilPoints() {
+  return Array.from({ length: 61 }, (_, i) => {
+    const t = i / 60, angle = (1 - t) * Math.PI * 2.1, radius = 11 + 23 * t;
+    return { x: 606 + Math.cos(angle) * radius, y: 467 + Math.sin(angle) * radius * 0.75 };
+  });
+}
+function waitingPoints(y, golden) {
+  const points = coilPoints();
+  // A neutral approach can freeze while pending; it reveals no destination.
+  const lead = golden || motionPreference.matches ? 0 : clamp01((y + 90) / 35) * 24;
+  for (let i = 1; i <= 12; i++) points.push({ x: 640, y: 467 + lead * i / 12 });
+  return points;
+}
+function measurePath(points) {
+  let length = 0;
+  const distances = points.map((p, i) => {
+    if (i) length += Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y);
+    return length;
+  });
+  return { points, distances, length };
+}
+function pointAlong(path, distance) {
+  const d = Math.max(0, Math.min(path.length, distance));
+  let i = 1;
+  while (i < path.distances.length - 1 && path.distances[i] < d) i++;
+  const a = path.points[i - 1], b = path.points[i];
+  const t = (d - path.distances[i - 1]) / (path.distances[i] - path.distances[i - 1] || 1);
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+function routeVisual(round) {
+  let visual = visualRounds.get(round);
+  if (!visual) { visual = { path: null }; visualRounds.set(round, visual); }
+  // A late receipt must not resurrect food after the real scorer records a miss.
+  if (!visual.path && round.answered && round.result !== "miss" && LABELS.includes(round.target)) {
+    visual.answerY = round.y;
+    visual.durationY = Math.max(FALL_PX_S * 0.4, BIN_Y - 110 - round.y);
+    const prefix = waitingPoints(round.y, round.golden);
+    const from = prefix[prefix.length - 1];
+    const goal = { x: 24 + LABELS.indexOf(round.target) * 311 + 149.5, y: 552 };
+    const route = Array.from({ length: 91 }, (_, i) => {
+      const t = i / 90, s = 1 - t;
+      return {
+        x: s ** 3 * from.x + 3 * s * s * t * from.x + 3 * s * t * t * goal.x + t ** 3 * goal.x,
+        y: s ** 3 * from.y + 3 * s * s * t * 526 + 3 * s * t * t * 476 + t ** 3 * goal.y,
+      };
+    });
+    visual.prefixLength = measurePath(prefix).length;
+    visual.path = measurePath(prefix.concat(route.slice(1)));
+    visual.route = route;
+    visual.goal = goal;
+  }
+  return visual;
+}
+function strokePoints(points, color, width) {
+  cx.beginPath(); points.forEach((p, i) => i ? cx.lineTo(p.x, p.y) : cx.moveTo(p.x, p.y));
+  cx.strokeStyle = color; cx.lineWidth = width; cx.lineCap = "round"; cx.lineJoin = "round"; cx.stroke();
+}
+function paintSnake(points, color) {
+  strokePoints(points, UI.bg, 22);
+  strokePoints(points, color, 16);
+  // Small scale marks and two restrained eyes distinguish the snake from a rail.
+  points.forEach((p, i) => { if (i % 5 === 0 && i < points.length - 4) dot(p.x, p.y, UI.bg + "55", 1.5); });
+  const head = points[points.length - 1], neck = points[points.length - 2];
+  cx.save(); cx.translate(head.x, head.y); cx.rotate(Math.atan2(head.y - neck.y, head.x - neck.x));
+  cx.beginPath(); cx.ellipse(0, 0, 12, 9, 0, 0, Math.PI * 2); cx.fillStyle = color; cx.fill();
+  dot(4, -4, UI.bg, 2.1); dot(4, 4, UI.bg, 2.1);
+  cx.restore();
+}
+function foodCard(x, y, color, decay = 0, eaten = 0, wrong = false) {
+  cx.save(); cx.translate(x, y); cx.rotate(decay * 0.25);
+  cx.globalAlpha = (1 - eaten) * (1 - decay * 0.45);
+  panel(-13, -17, 26, 34, UI.panel, color, 4);
+  line(-7, -7, 7, -7, color); line(-7, -1, 7, -1, color); line(-7, 5, 2, 5, color);
+  if (wrong || decay > 0) {
+    line(-9, 12, 9, -12, UI.red);
+    if (wrong) { cx.beginPath(); cx.arc(-13, 0, 6, 0, Math.PI * 2); cx.fillStyle = UI.bg; cx.fill(); }
+  }
+  cx.restore();
+}
+function drawSnakeRound() {
+  const visual = routeVisual(item);
+  const miss = item.result === "miss";
+  const color = item.golden ? LANE.jev : item.answered ? backendColor() : UI.muted;
+  if (!visual.path || miss) {
+    const points = waitingPoints(miss ? BIN_Y - 110 : item.y, item.golden);
+    paintSnake(points, miss ? UI.muted : color);
+    const decay = miss ? clamp01((item.settle || 0) / 450) : 0;
+    foodCard(640, 552, miss ? UI.red : color, decay);
+    text(miss ? "EXPIRED" : item.golden ? "JEV · SCRIPTED CALL" : lagMs ? "WAITING · LAG SIM" : "WAITING FOR ANSWER", 683, 485, 12, miss ? UI.red : color, 500, true);
+    return;
+  }
+  const elapsed = item.y - visual.answerY;
+  const u = motionPreference.matches ? item.result ? 1 : 0 : clamp01(elapsed / visual.durationY);
+  const ease = (1 - Math.cos(Math.PI * u)) / 2;
+  const distance = visual.prefixLength + (visual.path.length - visual.prefixLength) * ease;
+  const body = Array.from({ length: 49 }, (_, i) => {
+    const d = distance - (48 - i) * 2.5;
+    const p = pointAlong(visual.path, d);
+    const next = pointAlong(visual.path, d + 1);
+    const angle = Math.atan2(next.y - p.y, next.x - p.x) + Math.PI / 2;
+    const wave = motionPreference.matches || item.result ? 0
+      : Math.sin(d / 15 - (item.y + 90) / 26) * 3.2 * Math.sin(Math.PI * i / 48) * Math.sin(Math.PI * u);
+    return { x: p.x + Math.cos(angle) * wave, y: p.y + Math.sin(angle) * wave };
+  });
+  cx.save(); cx.setLineDash([3, 7]); strokePoints(visual.route, color + "55", 1.5); cx.restore();
+  const atFood = u >= 1 && item.result;
+  const eaten = atFood && item.result === "ok" ? motionPreference.matches ? 1
+    : clamp01((elapsed - visual.durationY) / (FALL_PX_S * 0.18)) : 0;
+  foodCard(visual.goal.x, visual.goal.y, item.result === "wrong" ? UI.red : color, 0, eaten, atFood && item.result === "wrong");
+  paintSnake(body, atFood && item.result === "wrong" ? UI.red : color);
+  if (atFood) {
+    const label = item.result === "ok" ? "+1 · EATEN" : "WRONG FOOD";
+    const labelColor = item.result === "ok" ? LANE.mlx : UI.red;
+    text(label, visual.goal.x - 42, 464, 12, labelColor, 500, true);
+    if (!motionPreference.matches) {
+      const pulse = clamp01((elapsed - visual.durationY) / (FALL_PX_S * 0.3));
+      cx.save(); cx.globalAlpha = 1 - pulse;
+      cx.beginPath(); cx.arc(visual.goal.x, visual.goal.y, 16 + pulse * 16, 0, Math.PI * 2);
+      cx.strokeStyle = labelColor; cx.lineWidth = 1.5; cx.stroke(); cx.restore();
+    }
   }
 }
 function backendColor() {
@@ -236,8 +357,8 @@ function overlay() {
   const p50 = sorted.length ? Math.round(sorted[Math.floor(sorted.length / 2)]) : 0;
   const acc = decided ? (correct / decided) : 0;
   brandMark(25, 35);
-  text("jevalaya sorter — live routing demo", 74, 43, 24, UI.text, 600);
-  text("One endpoint. Three backends. Every decision, on the record.", 25, 67, 14, UI.muted);
+  text("jevalaya snake — live routing demo", 74, 43, 24, UI.text, 600);
+  text("The model picks a topic. The snake follows a scripted path — not spatial steering.", 25, 67, 14, UI.muted);
   badge(paused ? "PAUSED" : "LIVE", 1150, 23, 106, paused ? UI.muted : LANE.mlx);
 
   text("LATEST ROUTING RECEIPT", 25, 93, 11, UI.muted, 500, true);
@@ -275,12 +396,13 @@ function overlay() {
   else text("server latency · no simulated delay", 992, 204, 12, UI.muted);
 
   // Persistent status row: no labels land on top of the moving article.
-  const failure = /WRONG|MISS|NO ANSWER/.test(last.status);
+  const outcome = item && item.result === "miss" ? "EXPIRED · NO ANSWER BEFORE DEADLINE" : last.status;
+  const failure = /WRONG|MISS|NO ANSWER/.test(outcome);
   const statusColor = paused ? UI.muted : failure ? UI.red
     : last.status.includes("FRIEND") ? LANE.jev : last.status.includes("SORTED") ? LANE.mlx
     : last.status === "ANSWERED" ? laneColor : LANE.ane;
   dot(45, 250, statusColor, 4);
-  const status = paused ? `PAUSED · ${last.status}` : last.status;
+  const status = paused ? `PAUSED · ${outcome}` : outcome;
   text(status, 59, 256, 17, statusColor, 600);
   cx.font = `400 13px ${UI.mono}`;
   const mode = fitText(last.mode === "—" ? "awaiting first article" : last.mode, 450);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>jevalaya sorter — live routing demo</title>
+<title>jevalaya snake — live routing demo</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; background: #0d1117; color: #f0f6fc; }
@@ -15,8 +15,8 @@
 </style>
 </head>
 <body>
-<main id="wrap"><canvas id="game" width="1280" height="720" role="img" aria-label="jevalaya sorter — live routing demo. News articles are classified into World, Sports, Business, and Sci/Tech, with a live backend receipt." aria-describedby="hint">Live routing demo. Use a browser with Canvas support.</canvas></main>
-<div id="hint">Space pauses the falling cards. L toggles a simulated 500 ms action delay; displayed inference latency is unchanged. G arms one golden item with a scripted Jev call. R restarts.</div>
+<main id="wrap"><canvas id="game" width="1280" height="720" role="img" aria-label="jevalaya snake — live routing demo. The model classifies news into World, Sports, Business, or Sci/Tech. A scripted snake animation follows the returned topic; the model does not steer the snake." aria-describedby="hint">Live routing demo. Use a browser with Canvas support.</canvas></main>
+<div id="hint">Space pauses the arena. L toggles a simulated 500 ms action delay; displayed inference latency is unchanged. G arms one golden item with a scripted Jev call. R restarts. Reduced-motion preference disables slithering without changing predictions or scores.</div>
 <script src="config.js"></script>
 <script src="sorter.js"></script>
 </body>
