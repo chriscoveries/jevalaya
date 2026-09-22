@@ -33,22 +33,7 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 </details>
 
-### 2. The snake
-
-`backend: ane / mlx / jev` `ms: server-reported` `reason: per receipt`
-
-<p align="center"><a href="docs/assets/snake-demo.mp4"><img src="docs/assets/snake-demo-preview.gif" alt="Snake routing demo: a live ANE receipt and the snake following the selected topic (click for full MP4)" width="640"></a></p>
-
-[Watch the snake demo (MP4)](docs/assets/snake-demo.mp4)
-
-<details>
-<summary>Inside the snake</summary>
-
-**Want to watch the router think?** [The snake demo](docs/assets/snake-demo.mp4) is a little arcade game that lives entirely on `/predict`: a headline appears, the model classifies it, and the snake slithers to the bin the router chose — short headlines hit ANE, full articles route MLX, one scripted golden headline phones Jev, and a lag switch shows what a slow backend costs. The overlay is the raw routing receipt; the snake is presentation, not steering — the model picks the topic, the snake follows. Source in [`tools/demo/sorter/`](tools/demo/sorter/).
-
-</details>
-
-### 3. The phone home
+### 2. The phone home
 
 `backend: jev` `ms: server-reported` `reason: … escalated to jev`
 
