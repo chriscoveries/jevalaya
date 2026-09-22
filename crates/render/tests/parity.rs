@@ -96,7 +96,7 @@ fn check_fixture_file(path: &Path, tok: &LayaTokenizer, checked: &mut usize) {
             .unwrap_or_else(|e| panic!("to_internal {qid} in {path:?}: {e}"));
         for alignment in [1usize, 8usize] {
             let gc =
-                jevalaya_render::gate_counts(tok, &fx["state"], &question, head_max_len, alignment)
+                jevalaya_render::gate_counts(tok, &fx["state"], &question, max_len, head_max_len, alignment)
                     .unwrap_or_else(|e| panic!("gate_counts {qid} in {path:?}: {e}"));
             assert_eq!(
                 gc.raw_count as u64,

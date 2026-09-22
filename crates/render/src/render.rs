@@ -21,12 +21,16 @@ use thiserror::Error;
 use crate::question::{to_internal, Question, QuestionError};
 use crate::tokenizer::LayaTokenizer;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum RenderError {
     #[error(transparent)]
     Question(#[from] QuestionError),
-    #[error("Question {0:?} has too many options for the token budget")]
-    TooManyOptions(String),
+    /// Deliberate option ceiling: at most `max_options` of this question's
+    /// options fit the token budget, but `received` were sent. The router
+    /// maps this to 400 `invalid_request` (never 500) — fix the question,
+    /// not the service.
+    #[error("too_many_options: at most {max_options} options fit the token budget, received {received}")]
+    TooManyOptions { max_options: usize, received: usize },
     #[error("questions must be a dictionary keyed by question id")]
     QuestionsNotADict,
     #[error("option_order length {0} does not match option count {1}")]
@@ -112,9 +116,33 @@ fn encode_full_state(tok: &LayaTokenizer, state: &Value) -> Vec<u32> {
     tok.encode(&text)
 }
 
+/// Markers surviving the `max_len` cut. Shared predicate so the ceiling,
+/// the sequence builder, and the gate can never disagree on what fits.
+fn surviving(markers: &[u32], max_len: usize) -> usize {
+    markers.iter().filter(|m| (**m as usize) < max_len).count()
+}
+
+/// Deliberate option ceiling: how many of this question's options fit the
+/// token budget. Markers are appended in option order, so the survivors are
+/// always a prefix — the count that fits IS the max. Computed from the head
+/// budget (`head_max_len` shapes the prefix; `max_len` cuts the markers).
+pub fn option_ceiling(
+    tok: &LayaTokenizer,
+    question: &Question,
+    head_max_len: usize,
+    max_len: usize,
+) -> Result<usize, RenderError> {
+    let (_, markers) = build_prefix(tok, question, head_max_len, None)?;
+    Ok(surviving(&markers, max_len))
+}
+
 /// Full sequence for one question: prefix + state + final `[SEP]`.
 /// Mirrors `build_sequence`. `truncate_left` takes the state's tail instead
 /// of its head (default right-side truncation matches `Agent.prepare`).
+///
+/// Fails closed with [`RenderError::TooManyOptions`] when markers fall past
+/// `max_len` — every consumer (execution render, ANE dispatch, MLX report)
+/// gets the same deliberate limit, never silently dropped options.
 pub fn build_sequence(
     tok: &LayaTokenizer,
     state: &Value,
@@ -125,6 +153,17 @@ pub fn build_sequence(
     truncate_left: bool,
 ) -> Result<(Vec<u32>, Vec<u32>), RenderError> {
     let (prefix_ids, markers) = build_prefix(tok, question, head_max_len, option_order)?;
+    let received = markers.len();
+    let kept: Vec<u32> = markers
+        .into_iter()
+        .filter(|m| (*m as usize) < max_len)
+        .collect();
+    if kept.len() != received {
+        return Err(RenderError::TooManyOptions {
+            max_options: kept.len(),
+            received,
+        });
+    }
     let state_ids = encode_full_state(tok, state);
     let room = (max_len as isize - prefix_ids.len() as isize - 1).max(0) as usize;
     let state_ids = if truncate_left {
@@ -138,11 +177,7 @@ pub fn build_sequence(
     ids.extend(state_ids.iter().copied());
     ids.push(tok.sep_id());
     ids.truncate(max_len);
-    let markers = markers
-        .into_iter()
-        .filter(|m| (*m as usize) < max_len)
-        .collect();
-    Ok((ids, markers))
+    Ok((ids, kept))
 }
 
 /// Pre-truncation gate counts for one question (DESIGN.md §Canonical prompt).
@@ -165,10 +200,19 @@ pub fn gate_counts(
     tok: &LayaTokenizer,
     state: &Value,
     question: &Question,
+    max_len: usize,
     head_max_len: usize,
     alignment: usize,
 ) -> Result<GateCounts, RenderError> {
-    let (prefix_ids, _) = build_prefix(tok, question, head_max_len, None)?;
+    let (prefix_ids, markers) = build_prefix(tok, question, head_max_len, None)?;
+    let received = markers.len();
+    let max_options = surviving(&markers, max_len);
+    if max_options != received {
+        return Err(RenderError::TooManyOptions {
+            max_options,
+            received,
+        });
+    }
     let state_ids = encode_full_state(tok, state);
     let raw_count = prefix_ids.len() + state_ids.len() + 1;
     let align = alignment.max(1);
@@ -179,8 +223,9 @@ pub fn gate_counts(
     })
 }
 
-/// Render every question in a `{qid: qdef}` map, in map order, validating the
-/// marker/option count like `Agent.prepare` does.
+/// Render every question in a `{qid: qdef}` map, in map order.
+/// `build_sequence` fails closed on over-budget option sets, so the
+/// marker/option invariant from `Agent.prepare` holds by construction.
 pub fn prepare(
     tok: &LayaTokenizer,
     state: &Value,
@@ -193,9 +238,7 @@ pub fn prepare(
         let question = to_internal(qdef)?;
         let (ids, markers) =
             build_sequence(tok, state, &question, max_len, head_max_len, None, false)?;
-        if markers.len() != question.options.len() {
-            return Err(RenderError::TooManyOptions(qid.clone()));
-        }
+        debug_assert_eq!(markers.len(), question.options.len());
         out.push((
             qid.clone(),
             Rendered {
