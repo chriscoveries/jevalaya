@@ -6,25 +6,13 @@ One `/predict` endpoint on your Mac. You POST a question, jevalaya decides where
 
 <p align="center"><img src="docs/assets/hero.svg" alt="jevalaya routes one /predict endpoint to ANE, MLX, or Jev" width="900"></p>
 
-## What it does, in plain English
+## SPEEEEED
 
-Every request goes to one of three places. jevalaya picks the cheapest one that can handle it:
-
-- **ANE — the Apple Neural Engine.** It's in every Mac since the M1 and almost nothing uses it. Lots of tiny cores, tiny context, super efficient, super fast. If your question fits in a handful of tokens, this is where it goes — and it answers in milliseconds, on the chip, for free.
-- **MLX — your GPU.** Bigger, heavier, holds much more context. When a question is too long for the Neural Engine, it stays on your Mac anyway and runs locally through MLX.
-- **API — Jev, the cloud.** That means sending a packet from you, past your wifi, through all the internet, to Jev... and back again. For maybe a 1-in-50 chance of a better answer. Oh, and paying for it. jevalaya only spends that call when the local models genuinely can't call it — and tells you exactly why in the receipt.
-
-**You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
-
-## See it work
-
-### 1. The burst
+### 1. SPEEEEED
 
 `backend: ane / mlx / jev` `ms: server-reported` `reason: explicit_backend`
 
 <p align="center"><a href="docs/assets/race-demo.mp4"><img src="docs/assets/race-demo-preview.gif" alt="Burst race: ANE and MLX markers at their server-reported timings, both choosing Sci/Tech (click for full MP4)" width="540"></a></p>
-
-[Watch the burst race (MP4)](docs/assets/race-demo.mp4)
 
 <details>
 <summary>Inside the burst</summary>
@@ -42,6 +30,18 @@ Every request goes to one of three places. jevalaya picks the cheapest one that 
 
 
 </details>
+
+## What it does, in plain English
+
+Every request goes to one of three places. jevalaya picks the cheapest one that can handle it:
+
+- **ANE — the Apple Neural Engine.** It's in every Mac since the M1 and almost nothing uses it. Lots of tiny cores, tiny context, super efficient, super fast. If your question fits in a handful of tokens, this is where it goes — and it answers in milliseconds, on the chip, for free.
+- **MLX — your GPU.** Bigger, heavier, holds much more context. When a question is too long for the Neural Engine, it stays on your Mac anyway and runs locally through MLX.
+- **API — Jev, the cloud.** That means sending a packet from you, past your wifi, through all the internet, to Jev... and back again. For maybe a 1-in-50 chance of a better answer. Oh, and paying for it. jevalaya only spends that call when the local models genuinely can't call it — and tells you exactly why in the receipt.
+
+**You don't know you need it until** your Jev bill lands and you realise most of those calls could've been answered on the chip you already own. Or until you're on a plane, offline, and the app still works. Or until you look at a latency graph and notice the internet is the slow part.
+
+
 
 ## What it does
 
