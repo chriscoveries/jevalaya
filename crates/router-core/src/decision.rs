@@ -103,6 +103,10 @@ pub struct RouteDecision {
     /// `{input_tokens, output_tokens, remote_usd}` once a result exists.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<Value>,
+    /// The effective request id — caller-supplied or generated — so the
+    /// consumer can join this receipt to `/feedback` records and routing
+    /// events (DESIGN.md §Consumer feedback).
+    pub request_id: String,
 }
 
 impl RouteDecision {
@@ -126,6 +130,7 @@ impl RouteDecision {
             degraded: false,
             escalation_error: None,
             cost: None,
+            request_id: String::new(),
         }
     }
 

@@ -30,7 +30,7 @@ One endpoint does the work. Everything is JSON; bodies over 256 KiB get a `400`.
   },
   "backend": "auto | ane | mlx | jev (default auto)",
   "model": "english | multilingual | typed-decisions (optional override)",
-  "request_id": "your id, echoed back in logs (optional)"
+  "request_id": "your id, echoed in the receipt + logs (optional — one is generated when absent)"
 }
 ```
 
@@ -79,10 +79,11 @@ Every response includes `routing` — the receipt that says what happened and wh
   "token_count": 34, "ane_eligible": false, "fallback": false,
   "latency_ms": 45.6, "escalated": false, "degraded": false,
   "confidence": 0.79, "margin": 0.57,
-  "cost": {"input_tokens": 34, "output_tokens": 0, "remote_usd": null}}
+  "cost": {"input_tokens": 34, "output_tokens": 0, "remote_usd": null},
+  "request_id": "req-19c4f2a1b-0007"}
 ```
 
-Read it like this: `backend` is who answered; `reason` is a stable prefix plus human detail (greppable — build dashboards on the prefix); `token_count` is the pre-truncation rendered count; `confidence`/`margin` are minimums across your questions; `escalated` + `jev_trigger` mean Jev weighed in; `fallback` + `fallback_from` mean ANE stumbled and MLX caught it; `degraded` means somethin' upstream didn't go to plan but the answer stands. `usage` (`input_tokens`, `output_tokens` always 0 locally) sits next to `answers` like laya always did.
+Read it like this: `backend` is who answered; `reason` is a stable prefix plus human detail (greppable — build dashboards on the prefix); `token_count` is the pre-truncation rendered count; `confidence`/`margin` are minimums across your questions; `escalated` + `jev_trigger` mean Jev weighed in; `fallback` + `fallback_from` mean ANE stumbled and MLX caught it; `degraded` means somethin' upstream didn't go to plan but the answer stands; `request_id` is the join key — echo it to `/feedback` and it joins your judgment to this run in the routing log. `usage` (`input_tokens`, `output_tokens` always 0 locally) sits next to `answers` like laya always did.
 
 ### Overrides
 
@@ -152,7 +153,7 @@ Required: `consumer` (who you are), `request_id` (echo it from your request so w
 
 **2. Append the file yourself** — same schema, one JSON line per judgment, to whatever path you and the operator agreed on (default convention `~/.jevalaya/feedback.jsonl`). Same fields, same effect; handy when you're batchin' judgments offline.
 
-Truthful negatives are the lagniappe — a hundred "this was wrong and here's why" beats a thousand silent successes for tunin' thresholds. And `request_id` only shows up in our logs if you send it — so send it, cher, otherwise we can't find your run in a crowd.
+Truthful negatives are the lagniappe — a hundred "this was wrong and here's why" beats a thousand silent successes for tunin' thresholds. `request_id` is the join key: grab it from `routing.request_id` in the receipt (we generate one when you don't send it — `req-...`) and echo it in the feedback record, otherwise we can't find your run in a crowd.
 
 ## Jev, money, and leavin' the machine
 

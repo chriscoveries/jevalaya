@@ -183,6 +183,21 @@ impl Default for PolicyConfig {
 }
 
 impl PolicyConfig {
+    /// Stable fingerprint of the resolved policy (`pol-<fnv1a64>` of the
+    /// canonical JSON) — stamped on routing events as `config_version` so
+    /// a result (and its `/feedback` record) joins to the exact
+    /// thresholds and flags that produced it (DESIGN.md §Consumer
+    /// feedback). Any policy change, including a reload, yields a new id.
+    pub fn version(&self) -> String {
+        let bytes = serde_json::to_vec(self).unwrap_or_default();
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in bytes {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        format!("pol-{h:016x}")
+    }
+
     /// `model_id` for a checkpoint decision; falls back to the name.
     pub fn model_id(&self, cp: Checkpoint) -> String {
         self.models
@@ -204,9 +219,7 @@ impl PolicyConfig {
         BackendThresholds {
             confidence: t.confidence.or(self.jev.confidence_threshold),
             margin: t.margin.or(self.jev.margin_threshold),
-            target_confidence: t
-                .target_confidence
-                .or(self.jev.target_confidence_threshold),
+            target_confidence: t.target_confidence.or(self.jev.target_confidence_threshold),
         }
     }
 }

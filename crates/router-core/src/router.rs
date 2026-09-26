@@ -225,12 +225,16 @@ impl Router {
         let cfg = self.config();
         let avail = self.availability();
         let t0 = Instant::now();
+        // The event must name the policy snapshot that produced the
+        // result, not whatever config is live when the request ends.
+        let config_version = cfg.version();
         let fallback_id = body.request_id.clone();
         let req = match ValidatedRequest::from_body(body) {
             Ok(r) => r,
             Err(e) => {
                 self.emit(
                     fallback_id.as_deref().unwrap_or("req"),
+                    &config_version,
                     &avail,
                     e.status(),
                     None,
@@ -245,7 +249,15 @@ impl Router {
             Ok(r) => (200, Some(&r.routing), None),
             Err(e) => (e.status(), None, Some(e.code())),
         };
-        self.emit(&req.request_id, &avail, status, decision, code, t0);
+        self.emit(
+            &req.request_id,
+            &config_version,
+            &avail,
+            status,
+            decision,
+            code,
+            t0,
+        );
         out
     }
 
@@ -458,6 +470,7 @@ impl Router {
             },
             format!("{}: fan-out", reason::COMPARE),
         );
+        routing.request_id = req.request_id.clone();
         routing.checkpoint = plan.checkpoint;
         routing.ane_eligible = plan.decision.ane_eligible;
 
@@ -600,6 +613,7 @@ impl Router {
     fn emit(
         &self,
         request_id: &str,
+        config_version: &str,
         avail: &Availability,
         status: u16,
         decision: Option<&RouteDecision>,
@@ -611,6 +625,7 @@ impl Router {
             Some(d) => RoutingEvent {
                 ts: rfc3339_now(),
                 request_id: request_id.to_string(),
+                config_version: config_version.to_string(),
                 backend: Some(d.backend),
                 checkpoint: d.checkpoint,
                 reason: d.reason_prefix().to_string(),
@@ -629,6 +644,7 @@ impl Router {
             None => RoutingEvent {
                 ts: rfc3339_now(),
                 request_id: request_id.to_string(),
+                config_version: config_version.to_string(),
                 backend: None,
                 checkpoint: None,
                 reason: err_code.unwrap_or("error").to_string(),

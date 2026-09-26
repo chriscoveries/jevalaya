@@ -160,6 +160,7 @@ pub fn route(
             cfg.jev.model_id.clone(),
             format!("{}: backend=jev", reason::EXPLICIT_BACKEND),
         );
+        d.request_id = req.request_id.clone();
         d.degraded = degraded;
         return Ok(RoutePlan {
             decision: d,
@@ -348,6 +349,7 @@ pub fn route(
             cfg.ane.model_id.clone(),
             format!("{prefix}: {detail}"),
         );
+        d.request_id = req.request_id.clone();
         d.checkpoint = Some(cp);
         d.token_count = ane_gate_counts.map(|c| c.raw_count as u64);
         d.ane_eligible = true;
@@ -410,6 +412,7 @@ pub fn route(
             cfg.model_id(cp),
             format!("{prefix}: {detail}"),
         );
+        d.request_id = req.request_id.clone();
         d.checkpoint = Some(cp);
         d.token_count = token_count;
         d.execution_token_count = exec_count;
@@ -434,6 +437,7 @@ pub fn route(
                     avail.ane
                 ),
             );
+            d.request_id = req.request_id.clone();
             d.degraded = true;
             Ok(RoutePlan {
                 decision: d,

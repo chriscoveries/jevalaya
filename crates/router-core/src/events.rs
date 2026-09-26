@@ -22,6 +22,10 @@ pub struct RoutingEvent {
     pub ts: String,
     /// Opaque caller/supplied id.
     pub request_id: String,
+    /// Fingerprint of the [`PolicyConfig`](crate::PolicyConfig) snapshot
+    /// that produced this result (`pol-<fnv1a64>`) — join key for
+    /// feedback → the policy that was in force.
+    pub config_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backend: Option<BackendKind>,
     #[serde(skip_serializing_if = "Option::is_none")]

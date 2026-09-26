@@ -536,17 +536,17 @@ Consumers can report how routed answers performed through a configured local JSO
   "consumer": "local-client",
   "request_id": "opaque-id-from-predict",
   "ts": "2026-09-22T00:00:00Z",
-  "answer_ok": false,
+  "chosen_answer_ok": false,
   "expected": { "question_id": { "choice": "expected-label" } },
   "notes": "Optional description of the observed outcome."
 }
 ~~~
 
-`consumer` and `request_id` are required nonempty strings, `ts` is an RFC3339 timestamp, and `answer_ok` is a required boolean. `expected` is optional arbitrary JSON (prefer a map keyed by question id for multiple questions); `notes` is an optional string. Consumer names are opaque data. Return the effective request id in `/predict` routing metadata and the routing event, generating one when absent, so consumers can join feedback to backend, checkpoint, latency, confidence, and config version. Include `config_version` in routing events to identify the policy used for each result.
+`consumer` and `request_id` are required nonempty strings, `ts` is an RFC3339 timestamp, and `chosen_answer_ok` is a required boolean. `expected` is optional arbitrary JSON (prefer a map keyed by question id for multiple questions); `notes` is an optional string. Consumer names are opaque data. Return the effective request id as `request_id` in `/predict` routing metadata and the routing event, generating one when absent (`req-<millis>-<counter>`), so consumers can join feedback to backend, checkpoint, latency, confidence, and config version. Include `config_version` in routing events — the `pol-<fnv1a64>` fingerprint of the `PolicyConfig` snapshot — to identify the policy used for each result.
 
 Service writes append one complete JSON record per line with serialized access to the configured file. Consumers may also append directly or edit the file while the writer is stopped; offline readers report malformed lines and continue with valid records. This remains a plain local file, without a database or automatic threshold updates. Feedback is consumer-reported evidence for later evaluation and threshold tuning; preserve conflicting or repeated reports rather than assuming each is an independent verified label.
 
-Optionally enable `POST /feedback` to validate and append the same record, using the prediction endpoint's bearer authentication and body limit. Return `201 {"ok":true}` only after the append succeeds; invalid records return 400 and sink failures return 503. An unknown request id may still be recorded because routing logs can rotate. When disabled, the endpoint returns 404. Feedback write failures do not change prediction results. The service never inserts prompt state or credentials into feedback; `expected` and `notes` contain only what the consumer supplies.
+Optionally enable `POST /feedback` to validate and append the same record, using the prediction endpoint's bearer authentication and body limit. Return `202 {"ok":true}` only after the append succeeds; invalid records return 400 and sink failures return 500. An unknown request id may still be recorded because routing logs can rotate. When no `[feedback] sink` is configured, the endpoint returns 503 `not_ready`. Feedback write failures do not change prediction results. The service never inserts prompt state or credentials into feedback; `expected` and `notes` contain only what the consumer supplies.
 
 ## Chunked inference strategy
 

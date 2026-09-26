@@ -798,6 +798,109 @@ async fn score_noul_escalation_unservable_keeps_local_answer() {
     assert_eq!(out.answers, local_answers);
 }
 
+/// T029: `/feedback` can only join a run when the consumer sees the
+/// effective request id — the routing receipt must echo a caller id or
+/// carry the generated one, and the routing event must match it.
+#[tokio::test(flavor = "current_thread")]
+async fn request_id_joins_receipt_and_event() {
+    let sink = Arc::new(VecSink::default());
+    let ok = || {
+        Ok(BackendResult {
+            model: "mlx-model".into(),
+            answers: json!({"q": {"type": "choice", "choice": "a",
+                "confidence": 0.9, "probabilities": {"a": 0.9, "b": 0.1}}}),
+            usage: json!({}),
+            latency_ms: 3,
+        })
+    };
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(
+        BackendKind::Mlx,
+        MockBackend::scripted(BackendKind::Mlx, vec![ok(), ok()]),
+    );
+    let r = Router::new(
+        cfg_with_ane(),
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Mlx],
+        sink.clone(),
+    );
+
+    // Caller-supplied id is echoed verbatim in the routing receipt…
+    let supplied: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": question(), "request_id": "join-1",
+    }))
+    .unwrap();
+    let out = r.predict(supplied).await.unwrap();
+    assert_eq!(out.routing.request_id, "join-1");
+
+    // …and generated when absent — route-only decisions carry it too.
+    let out2 = r.predict(body(json!(EN), "auto")).await.unwrap();
+    assert!(out2.routing.request_id.starts_with("req-"));
+    let routed = r.route_only(body(json!(EN), "auto")).unwrap();
+    assert!(routed.request_id.starts_with("req-"));
+
+    let events = sink.events.lock().unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].request_id, "join-1");
+    assert_eq!(events[1].request_id, out2.routing.request_id);
+}
+
+/// T029: `config_version` on each routing event identifies the policy
+/// snapshot that produced the result — a `update_config` change yields a
+/// new version, and the event matches `PolicyConfig::version()`.
+#[tokio::test(flavor = "current_thread")]
+async fn config_version_identifies_the_policy_that_served() {
+    let sink = Arc::new(VecSink::default());
+    let ok = || {
+        Ok(BackendResult {
+            model: "mlx-model".into(),
+            answers: json!({"q": {"type": "choice", "choice": "a",
+                "confidence": 0.9, "probabilities": {"a": 0.9, "b": 0.1}}}),
+            usage: json!({}),
+            latency_ms: 3,
+        })
+    };
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(
+        BackendKind::Mlx,
+        MockBackend::scripted(BackendKind::Mlx, vec![ok(), ok()]),
+    );
+    let cfg = cfg_with_ane();
+    let v1 = cfg.version();
+    assert!(v1.starts_with("pol-"));
+    let r = Router::new(
+        cfg,
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Mlx],
+        sink.clone(),
+    );
+
+    r.predict(body(json!(EN), "auto")).await.unwrap();
+    {
+        let events = sink.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].config_version, v1);
+    }
+
+    // A threshold change is a different policy — the next event must
+    // carry the new fingerprint, so feedback stays attributable.
+    let mut cfg2 = r.config();
+    cfg2.thresholds.mlx = Some(BackendThresholds {
+        margin: Some(0.9),
+        ..BackendThresholds::default()
+    });
+    r.update_config(cfg2);
+    let v2 = r.config().version();
+    assert_ne!(v1, v2);
+
+    r.predict(body(json!(EN), "auto")).await.unwrap();
+    let events = sink.events.lock().unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[1].config_version, v2);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn per_backend_thresholds_judge_the_serving_backend() {
     // T022: identical answer (conf .65, margin .90) — under ANE gates
