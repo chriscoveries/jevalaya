@@ -798,6 +798,85 @@ async fn score_noul_escalation_unservable_keeps_local_answer() {
     assert_eq!(out.answers, local_answers);
 }
 
+/// The routing event must carry the same escalation failure class as the
+/// receipt — post-hoc audits see `invalid_request`, not just `degraded`.
+#[tokio::test(flavor = "current_thread")]
+async fn event_carries_escalation_error() {
+    let sink = Arc::new(VecSink::default());
+    let questions: Map<String, Value> = json!({
+        "sev": {"type": "score", "instructions": "how severe?",
+                "criteria": ["trivial", "annoying", "unusable"]},
+        "refund": {"type": "noul", "instructions": "refund?"},
+    })
+    .as_object()
+    .unwrap()
+    .clone();
+    let flat = || {
+        Ok(BackendResult {
+            model: "mlx-model".into(),
+            answers: json!({
+                "sev": {"type": "score", "score": 1.1, "confidence": 0.4,
+                        "legend": {"0": "trivial", "1": "annoying", "2": "unusable"},
+                        "probabilities": {"0": 0.4, "1": 0.35, "2": 0.25},
+                        "action": {"act_probability": 1.0}},
+                "refund": {"type": "noul", "noul": 0.4, "confidence": 0.6,
+                           "action": {"act_probability": 0.9}},
+            }),
+            usage: json!({}),
+            latency_ms: 3,
+        })
+    };
+    let mlx = MockBackend::scripted(BackendKind::Mlx, vec![flat(), flat()]);
+    let jev = MockBackend::scripted(
+        BackendKind::Jev,
+        vec![
+            Err(BackendError::InvalidRequest("score outside 2-10".into())),
+            Ok(BackendResult {
+                model: "jev-model".into(),
+                answers: json!({
+                    "sev": {"type": "score", "score": 2.0, "confidence": 0.9,
+                            "legend": {"0": "trivial", "1": "annoying", "2": "unusable"},
+                            "probabilities": {"0": 0.05, "1": 0.05, "2": 0.9},
+                            "action": {"act_probability": 1.0}},
+                    "refund": {"type": "noul", "noul": 0.8, "confidence": 0.9,
+                               "action": {"act_probability": 0.9}},
+                }),
+                usage: json!({}),
+                latency_ms: 120,
+            }),
+        ],
+    );
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Mlx, mlx);
+    backends.insert(BackendKind::Jev, jev);
+    let r = Router::new(
+        cfg_with_ane(),
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Mlx, BackendKind::Jev],
+        sink.clone(),
+    );
+    let body: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": questions, "backend": "auto",
+    }))
+    .unwrap();
+    r.predict(body.clone()).await.unwrap(); // escalation refused
+    r.predict(body).await.unwrap(); // escalation succeeds
+    let events = sink.events.lock().unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events[0].escalation_error.as_deref(),
+        Some("invalid_request")
+    );
+    assert!(events[0].degraded);
+    assert!(events[1].escalation_error.is_none());
+    assert!(!events[1].degraded);
+    // Wire shape: absent on clean events, present with the code on failed ones.
+    let v = serde_json::to_value(&*events).unwrap();
+    assert!(v[0].get("escalation_error").is_some());
+    assert!(v[1].get("escalation_error").is_none());
+}
+
 /// T029: `/feedback` can only join a run when the consumer sees the
 /// effective request id — the routing receipt must echo a caller id or
 /// carry the generated one, and the routing event must match it.

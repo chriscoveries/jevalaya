@@ -43,6 +43,12 @@ pub struct RoutingEvent {
     pub queue_ms: Option<f64>,
     pub fallback: bool,
     pub escalated: bool,
+    /// Stable code when an attempted Jev escalation failed
+    /// (`invalid_request`, `backend_unavailable`, `upstream_error`) —
+    /// same value the routing receipt carries, so event-side audits see
+    /// the failure class, not just `degraded`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub escalation_error: Option<String>,
     pub degraded: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<Value>,
