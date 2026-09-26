@@ -36,6 +36,13 @@ pub struct JevConfig {
     pub max_attempts: u32,
     /// Backoff before retry N (design: 0.5s, 1.0s).
     pub backoff: Vec<Duration>,
+    /// Provider context budget for `state` plus the single longest
+    /// question (jev-1.13.0: 32k). Estimated without the provider's
+    /// tokenizer — see `est_tokens`.
+    pub state_context_tokens: usize,
+    /// Provider context budget for the whole request — `state` plus all
+    /// questions combined (jev-1.13.0: 64k).
+    pub request_context_tokens: usize,
 }
 
 impl Default for JevConfig {
@@ -48,6 +55,8 @@ impl Default for JevConfig {
             request_timeout: Duration::from_millis(25_000),
             max_attempts: 3,
             backoff: vec![Duration::from_millis(500), Duration::from_millis(1000)],
+            state_context_tokens: 32_768,
+            request_context_tokens: 65_536,
         }
     }
 }
@@ -165,6 +174,7 @@ impl JevBackend {
         questions: &Map<String, Value>,
     ) -> Result<BackendResult, BackendError> {
         let questions = jev_questions(questions)?;
+        check_context_budget(&self.config, state, &questions)?;
         let body = serde_json::json!({
             "model": self.config.model,
             "state": state,
@@ -332,6 +342,60 @@ fn jev_questions(questions: &Map<String, Value>) -> Result<Map<String, Value>, B
         }
     }
     Ok(out)
+}
+
+/// Context preflight (T038): jev-1.13.0 budgets 32k tokens for `state`
+/// plus the longest question and 64k for `state` plus all questions —
+/// bodies over either line are a guaranteed failure, so reject before
+/// the paid POST. Estimation is deliberately conservative (English runs
+/// ~3–4 chars/token, CJK ~1 char/token): `ceil(chars/3)` over-counts
+/// Latin text by ~30% rather than under-count, and the non-ASCII count
+/// covers the CJK worst case. Budgets live on `JevConfig` because they
+/// follow the pinned model version.
+fn check_context_budget(
+    config: &JevConfig,
+    state: &Value,
+    questions: &Map<String, Value>,
+) -> Result<(), BackendError> {
+    let state_tokens = est_tokens(&match state {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    });
+    let mut longest_qid = "";
+    let mut longest = 0usize;
+    let mut total = 0usize;
+    for (qid, qdef) in questions {
+        let n = est_tokens(&qdef.to_string());
+        if n > longest {
+            longest = n;
+            longest_qid = qid;
+        }
+        total = total.saturating_add(n);
+    }
+    if state_tokens.saturating_add(longest) > config.state_context_tokens {
+        return Err(BackendError::InvalidRequest(format!(
+            "context preflight: est. {} tokens for state + question {longest_qid:?} \
+             exceeds the {}-token state budget",
+            state_tokens + longest,
+            config.state_context_tokens
+        )));
+    }
+    if state_tokens.saturating_add(total) > config.request_context_tokens {
+        return Err(BackendError::InvalidRequest(format!(
+            "context preflight: est. {} tokens for state + {} questions \
+             exceeds the {}-token request budget",
+            state_tokens + total,
+            questions.len(),
+            config.request_context_tokens
+        )));
+    }
+    Ok(())
+}
+
+fn est_tokens(text: &str) -> usize {
+    let chars = text.chars().count();
+    let non_ascii = text.chars().filter(|c| !c.is_ascii()).count();
+    non_ascii.max(chars.div_ceil(3))
 }
 
 /// Choice-answer invariants, mirroring `validate_choice`: the selected label
@@ -737,6 +801,78 @@ mod tests {
             );
             assert_eq!(mock.hits.load(Ordering::SeqCst), 0);
         }
+    }
+
+    #[test]
+    fn est_tokens_bounds_both_scripts() {
+        // ASCII/Latin: ~3–4 chars/token → chars/3 is a mild over-count.
+        assert_eq!(est_tokens("aaa"), 1);
+        assert_eq!(est_tokens(&"a".repeat(300)), 100);
+        // CJK: ~1 token/char — chars/3 alone would under-count a CJK
+        // state by 3x and wave a doomed request through.
+        assert_eq!(est_tokens(&"。a".repeat(50)), 50);
+        assert_eq!(est_tokens(&"。".repeat(33_000)), 33_000);
+    }
+
+    #[tokio::test]
+    async fn context_preflight_rejects_oversized_state() {
+        // T038: jev-1.13.0 budgets 32k tokens for `state` plus the longest
+        // question. ~100k ASCII chars estimates ≈33.4k — over budget —
+        // so the adapter refuses before the paid POST.
+        let mock = serve(vec![(200, good_body())]);
+        let client = client_for(&mock);
+        let err = client
+            .predict_json(&Value::String("x".repeat(100_000)), &test_questions())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BackendError::InvalidRequest(_)),
+            "expected InvalidRequest, got {err:?}"
+        );
+        assert_eq!(mock.hits.load(Ordering::SeqCst), 0);
+        // A CJK state rides on the non-ASCII bound, not chars/3.
+        let err = client
+            .predict_json(&Value::String("。".repeat(33_000)), &test_questions())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, BackendError::InvalidRequest(_)));
+        assert_eq!(mock.hits.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn context_preflight_counts_the_whole_fanout() {
+        // The 64k budget covers state + ALL questions, while the 32k
+        // budget only prices the longest — an individually-small fan-out
+        // can clear the first and still bust the second.
+        let mock = serve(vec![(200, good_body())]);
+        let client = JevBackend::with_key(
+            JevConfig {
+                base_url: format!("http://{}", mock.addr),
+                request_context_tokens: 300,
+                ..JevConfig::default()
+            },
+            "test-key".to_string(),
+        )
+        .unwrap();
+        let questions: Map<String, Value> = (0..5)
+            .map(|i| {
+                (
+                    format!("q{i}"),
+                    serde_json::json!({"type": "noul", "instructions": "i",
+                        "criteria": {"true": "y".repeat(200)}}),
+                )
+            })
+            .collect();
+        let err = client
+            .predict_json(&serde_json::json!("tiny"), &questions)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BackendError::InvalidRequest(_)),
+            "expected InvalidRequest, got {err:?}"
+        );
+        assert!(err.to_string().contains("request budget"));
+        assert_eq!(mock.hits.load(Ordering::SeqCst), 0);
     }
 
     #[test]

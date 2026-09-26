@@ -152,6 +152,8 @@ fn build_backends(cfg: &ServerConfig) -> HashMap<BackendKind, Arc<dyn PredictBac
             request_timeout: Duration::from_millis(cfg.jev.request_timeout_ms),
             max_attempts: cfg.jev.retries,
             backoff: vec![Duration::from_millis(500), Duration::from_millis(1000)],
+            state_context_tokens: cfg.jev.state_context_tokens,
+            request_context_tokens: cfg.jev.request_context_tokens,
         };
         match JevBackend::from_env(jcfg) {
             Ok(b) => {

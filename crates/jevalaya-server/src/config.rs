@@ -118,6 +118,14 @@ pub struct JevSection {
     /// Total attempts incl. the first (design default 3).
     #[serde(default = "default_jev_retries")]
     pub retries: u32,
+    /// Provider context budgets (jev-1.13.0): 32k for state + the
+    /// longest question, 64k for the whole request. The adapter
+    /// estimates tokens before posting and fails `invalid_request`
+    /// early instead of paying for a doomed call.
+    #[serde(default = "default_jev_state_ctx")]
+    pub state_context_tokens: usize,
+    #[serde(default = "default_jev_request_ctx")]
+    pub request_context_tokens: usize,
     pub confidence_threshold: Option<f64>,
     pub margin_threshold: Option<f64>,
     pub target_confidence_threshold: Option<f64>,
@@ -200,6 +208,12 @@ fn default_jev_timeout_ms() -> u64 {
 fn default_jev_retries() -> u32 {
     3
 }
+fn default_jev_state_ctx() -> usize {
+    32_768
+}
+fn default_jev_request_ctx() -> usize {
+    65_536
+}
 fn default_queue_capacity() -> usize {
     1024
 }
@@ -245,6 +259,8 @@ impl Default for JevSection {
             model: default_jev_model(),
             request_timeout_ms: default_jev_timeout_ms(),
             retries: default_jev_retries(),
+            state_context_tokens: default_jev_state_ctx(),
+            request_context_tokens: default_jev_request_ctx(),
             confidence_threshold: None,
             margin_threshold: None,
             target_confidence_threshold: None,

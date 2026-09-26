@@ -68,9 +68,19 @@ enabled = true
 base_url = "https://api.typesafe.ai"
 predict_path = "/v1/systemone"
 api_key_env = "TYPESAFE_API_KEY"
-model = "jev-latest"
+# Pin the versioned model rather than the `jev-latest` alias: the alias
+# moves when a release ships and would silently invalidate calibrated
+# escalation gates and the context budgets below. The response `model`
+# field reports the version that actually answered.
+model = "jev-1.13.0"
 request_timeout_ms = 25000
 retries = 2
+# Provider context budgets for the pinned version (tokens, estimated
+# conservatively — chars/3 or the non-ASCII count, whichever is larger):
+# 32k for state + the longest question, 64k for state + all questions.
+# Requests over budget fail `invalid_request` before the paid call.
+# state_context_tokens = 32768
+# request_context_tokens = 65536
 confidence_threshold = 0.75
 margin_threshold = 0.20
 target_confidence_threshold = 0.85
