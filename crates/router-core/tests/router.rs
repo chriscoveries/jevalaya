@@ -588,6 +588,27 @@ async fn missing_checkpoint_tokenizer_refuses_503_without_dispatch() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn empty_questions_map_fails_400_without_dispatch() {
+    // T014: {} is a malformed request, not an empty answer set and not a
+    // backend problem — 400 before any backend is touched.
+    let r = rig(
+        ScriptedEngine::new(20, 20),
+        cfg_with_ane(),
+        true,
+        true,
+        true,
+    );
+    let mut b = body(json!(DE), "auto");
+    b.questions = Map::new();
+    let err = r.router.predict(b).await.unwrap_err();
+    assert_eq!(err.status(), 400);
+    assert_eq!(err.code(), "invalid_request");
+    assert_eq!(r.mlx.calls(), 0);
+    assert_eq!(r.ane.calls(), 0);
+    assert_eq!(r.jev.calls(), 0);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn prefer_ane_off_auto_routes_mlx() {
     let mut cfg = cfg_with_ane();
     cfg.ane.prefer_ane_for_short = false;

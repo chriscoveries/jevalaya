@@ -36,6 +36,14 @@ static REQUEST_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 
 impl ValidatedRequest {
     pub fn from_body(body: PredictBody) -> Result<Self, RouteError> {
+        // T014: an empty questions map is a request-shape failure, not a
+        // routing decision — refuse before backend selection so it can never
+        // surface as an empty 200 or a misleading backend error.
+        if body.questions.is_empty() {
+            return Err(RouteError::InvalidRequest(
+                "no questions to answer".to_string(),
+            ));
+        }
         let mut parsed = Vec::with_capacity(body.questions.len());
         for (qid, qdef) in &body.questions {
             let q = to_internal(qdef)
