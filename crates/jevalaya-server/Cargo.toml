@@ -38,3 +38,4 @@ tower-http = { version = "0.6", features = ["trace"] }
 
 [dev-dependencies]
 tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread"] }
+async-trait = "0.1"

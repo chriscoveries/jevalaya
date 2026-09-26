@@ -136,7 +136,7 @@ Every backend implements one normalized adapter contract: the router passes the 
 
 When `compare` is present, the response keeps the normal primary `model`/`answers`/`usage` and adds a `compare` object containing one entry per requested backend, each with its normalized result (when available), `RouteDecision`, latency, cost, or a structured error. `compare=true` uses the configured comparison set; an explicit list is filtered through the health snapshot. A compare set has two or three distinct backends before health filtering; a one-backend set is ordinary routing, not compare mode.
 
-Expose GET /health (preserving ok/model fields), GET /ready (readiness without forcing all lazy weights), and POST /predict. A future /route may return RouteDecision without running inference.
+Expose GET /health (preserving ok/model fields), GET /ready (readiness without forcing all lazy weights), and POST /predict. A future /route may return RouteDecision without running inference. Each present entry in /health `backends` is `{available, detail, configured: true, reachable: null}` (absent backends are null): `available` is a capability flag meaning "may serve" — Jev reports API-key presence, never endpoint liveness, and ANE reports available while warming (an explicit pin still falls back until resident), so dashboards must never read `available` as reachability or dispatch readiness. `reachable` is null because health never probes the network and never fetches keys. The only machine-read dispatch-readiness signal is ANE's "; warming" suffix in `detail`.
 
 Status/error mapping is stable JSON with code and no stack trace:
 

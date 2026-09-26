@@ -19,7 +19,7 @@ use serde_json::{json, Map, Value};
 use tokio::sync::Semaphore;
 use tower_http::trace::TraceLayer;
 
-use jevalaya_router_core::{BackendKind, PredictBody, RouteError, Router};
+use jevalaya_router_core::{BackendKind, PredictBackend, PredictBody, RouteError, Router};
 
 /// Shared handler state.
 pub struct AppState {
@@ -146,14 +146,37 @@ async fn route_only(
     }
 }
 
+/// One backend's `GET /health` entry. Shape contract — dashboards read
+/// this, so keys are additive-only once shipped:
+/// - `available`: last-known capability flag, i.e. "may serve". It is NOT
+///   a reachability guarantee (Jev reports API-key presence, never endpoint
+///   liveness) and NOT dispatch readiness (ANE reports available while
+///   warming — an explicit pin still falls back until resident; the only
+///   machine-read readiness signal today is the "; warming" suffix in
+///   `detail`, as `wait_ane_ready` parses it).
+/// - `configured`: the adapter is constructed and registered. Absent
+///   backends render as null (not configured at all).
+/// - `reachable`: null — health never probes the network and never fetches
+///   keys, so reachability is untested by construction. A future prober may
+///   fill true/false; until then, never read `available` as "will serve".
+fn backend_entry(backend: Option<&Arc<dyn PredictBackend>>) -> Value {
+    match backend {
+        None => Value::Null,
+        Some(b) => {
+            let c = b.capabilities();
+            json!({
+                "available": c.available,
+                "detail": c.detail,
+                "configured": true,
+                "reachable": Value::Null,
+            })
+        }
+    }
+}
+
 async fn health(State(state): State<Arc<AppState>>) -> Response {
     let avail = state.router.availability();
-    let backends = |k: BackendKind| {
-        state.router.backend(k).map(|b| {
-            let c = b.capabilities();
-            json!({"available": c.available, "detail": c.detail})
-        })
-    };
+    let backends = |k: BackendKind| backend_entry(state.router.backend(k).as_ref());
     let any = avail.list();
     Json(json!({
         "ok": !any.is_empty(),
@@ -319,5 +342,87 @@ mod tests {
                 .is_err()
         );
         assert!(rec(json!(["not", "an", "object"])).is_err());
+    }
+
+    struct ScriptedBackend {
+        kind: BackendKind,
+        available: bool,
+        detail: String,
+    }
+
+    #[async_trait::async_trait]
+    impl jevalaya_router_core::PredictBackend for ScriptedBackend {
+        fn kind(&self) -> BackendKind {
+            self.kind
+        }
+        fn capabilities(&self) -> jevalaya_router_core::BackendCapabilities {
+            jevalaya_router_core::BackendCapabilities {
+                kind: self.kind,
+                available: self.available,
+                detail: self.detail.clone(),
+            }
+        }
+        async fn preload(
+            &self,
+            _request: jevalaya_router_core::PreloadRequest,
+        ) -> Result<(), jevalaya_router_core::BackendError> {
+            Ok(())
+        }
+        async fn unload(
+            &self,
+            _target: jevalaya_router_core::UnloadTarget,
+        ) -> Result<(), jevalaya_router_core::BackendError> {
+            Ok(())
+        }
+        async fn predict(
+            &self,
+            _request: &jevalaya_router_core::PredictRequest,
+            _rendered: Option<&jevalaya_router_core::RenderedPrompt>,
+        ) -> Result<jevalaya_router_core::BackendResult, jevalaya_router_core::BackendError> {
+            Err(jevalaya_router_core::BackendError::Inference(
+                "never called".to_string(),
+            ))
+        }
+    }
+
+    fn scripted(kind: BackendKind, available: bool, detail: &str) -> Arc<dyn PredictBackend> {
+        Arc::new(ScriptedBackend {
+            kind,
+            available,
+            detail: detail.to_string(),
+        })
+    }
+
+    #[test]
+    fn health_entry_marks_capability_not_reachability() {
+        // T054: `available` is capability ("may serve"), never liveness.
+        // `reachable` is null because health never probes the network.
+        let v = backend_entry(Some(
+            &scripted(BackendKind::Jev, true, "typesafe https://api.typesafe.ai"),
+        ));
+        assert_eq!(v["available"], json!(true));
+        assert_eq!(v["configured"], json!(true));
+        assert!(v["reachable"].is_null());
+        assert_eq!(v["detail"], json!("typesafe https://api.typesafe.ai"));
+
+        // Keyless Jev still reports configured (adapter built) but not
+        // available — a dashboard can tell "no credential" from "down".
+        let v = backend_entry(Some(&scripted(BackendKind::Jev, false, "typesafe unset")));
+        assert_eq!(v["available"], json!(false));
+        assert_eq!(v["configured"], json!(true));
+        assert!(v["reachable"].is_null());
+
+        // Warming detail passes through untouched: it is the only
+        // machine-read dispatch-readiness signal today.
+        let v = backend_entry(Some(&scripted(
+            BackendKind::Ane,
+            true,
+            "laya-coreml-ane B1 L96 K32 fp16 (cpu_ne); warming",
+        )));
+        assert_eq!(v["available"], json!(true));
+        assert!(v["detail"].as_str().unwrap().contains("warming"));
+
+        // Absent backends render null, never a fabricated entry.
+        assert_eq!(backend_entry(None), Value::Null);
     }
 }
