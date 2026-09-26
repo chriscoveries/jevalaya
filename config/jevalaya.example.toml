@@ -15,6 +15,19 @@ default_checkpoint = "english"
 auto_task_detection = false
 compare_backends = ["mlx", "jev"]
 
+# Per-backend escalation gates (v1 calibration; DESIGN.md §Ordered
+# routing). Margin is the trigger; confidence is only a deep-tail
+# tripwire — it collapses with rendered token count on real traffic, so
+# no mid-range floor is meaningful. Absent fields inherit the [jev]
+# globals below; an explicit 0.0 disables that gate on that backend.
+[policy.thresholds.ane]
+margin = 0.2
+confidence = 0.2
+
+[policy.thresholds.mlx]
+margin = 0.3
+confidence = 0.0
+
 # Model directories — `hf download` puts them in the HF hub cache:
 #   hf download aac6fef/laya-mlx
 #   hf download aac6fef/laya-multilingual-mlx

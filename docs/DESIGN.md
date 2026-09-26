@@ -359,12 +359,21 @@ The router has a pure decision phase followed by execution/escalation. No weight
    - compare mode fans out to two or all three selected backends and returns every normalized answer plus per-backend routing;
    - when Jev is unreachable in auto mode, retain the validated local answer with degraded=true and escalation_error. An explicit Jev request remains a 502/503.
 
-Escalation calibration is v0 and deliberately per backend: the confidence scales are not comparable across runtimes (verified sweeps in tools/bench/results show ANE confidence mean ~0.94 vs MLX ~0.81-0.87 at similar accuracy, so a shared conf<0.75 gate escalated ~28% of MLX traffic vs ~8.5% of ANE). Seeded values — margin primary, confidence secondary:
+Escalation calibration is v1: margin is the gate, confidence is a deep-tail tripwire. Two evidence sources: the labeled sweeps in tools/bench/results (agnews/xnli/clinc per-record conf, margin, correctness) and the T034 live-service measurement (tools/bench → /tmp/t034/t034-results.json: identical inputs driven through both engines, plus a 32→901-token context sweep, cold boot, and residency timing).
 
-- `[policy.thresholds.ane]` margin=0.2, confidence=0.6. ANE runs hot; margin<0.2 alone isolates ~1% of traffic at ~0.61 accuracy, and conf<0.6 adds the ~4% below-scale tail at ~0.60 accuracy. Estimated ~5% escalation vs ~8.5% under the old global gates, better targeted.
-- `[policy.thresholds.mlx]` margin=0.3, confidence=0.6. MLX margins run colder; the 0.2-0.3 band is still ~half-wrong (esc_acc ~0.49-0.51), so the wider margin gate pays for itself, while conf<0.6 covers the confident-wrong tail (~14-20% of traffic at ~0.62-0.68 accuracy). Estimated ~16-25% escalation vs ~28-39% under the globals. The accuracy-first alternative is confidence=0.7, which buys ~+1-2 points of kept-accuracy for ~+8-10 points of escalation spend.
+What the evidence changed:
 
-These are round-number v0 picks from the sweep grids, not fitted optima; re-derive per deployment with the same tooling before trusting them.
+- The confidence scales ARE comparable across runtimes — T034 paired calls on identical inputs show ANE vs MLX conf/margin identical to ~0.002. The earlier hot/cold gap (ANE mean ~0.94 vs MLX ~0.81-0.87) was a traffic-mix artifact: ANE only ever saw ≤96-token prompts. Per-backend thresholds remain, but for traffic-mix reasons, not scale reasons.
+- Confidence is length-confounded. On a constant defensible answer, T034 conf fell 0.9962→0.0525 and margin 0.9991→0.0248 as rendered length grew 32→901 tokens. Any mid-range conf floor escalates essentially all long-context traffic regardless of correctness; on labeled MLX data the conf<0.6 tail was ~12-19% of traffic at ~0.68-0.73 accuracy — spend without error capture. Margin is less length-sensitive within its working domain and isolates the genuinely-wrong tail on every labeled set (margin<0.2: ~1-5% of traffic at ~0.43-0.61 accuracy).
+
+Seeded values — margin primary, confidence as tripwire only:
+
+- `[policy.thresholds.ane]` margin=0.2, confidence=0.2. The margin gate is unchanged (labeled: ~1% escalation at ~0.61 accuracy). The confidence floor drops from 0.6 to 0.2: T034 shows defensible ANE-domain answers down to conf ~0.26 (87 tokens), so 0.6 was escalating correct traffic; 0.2 keeps a tripwire for near-degenerate output distributions.
+- `[policy.thresholds.mlx]` margin=0.3, confidence=0.0 (gate disabled). No static conf floor survives the long-context evidence — T034's correct 901-token answer scored conf 0.0525, so even a 0.1 floor fires on kept traffic. Margin alone gates MLX; the 0.2-0.3 band is ~half-wrong on labeled data and the ineligible/long tail concentrates on this path. An explicit `confidence = 0.0` is the per-backend off switch: `conf < 0.0` never fires, and the field's Some(0.0) wins over the `[jev]` global fallback.
+
+Latency context (T034, informs why the traffic mix matters): warm ANE p50 ~8-9ms on its ≤96-token domain vs MLX ~15-90ms growing with length; cold ANE residency ~6s serves warming requests through an honest MLX fallback (`ane_warming` → `not_ready`), which is then judged by MLX gates as designed. Known limit: margin itself compresses on heavily padded contexts (0.02 at 901 tokens); a length-aware gate is future work, not v1.
+
+These remain round-number picks derived from the sweep grids plus T034's live distributions — re-derive per deployment with the same tooling before trusting them.
 
 ## Backend implementations
 

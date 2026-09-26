@@ -840,6 +840,97 @@ async fn ane_mlx_fallback_is_judged_by_mlx_gates() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn confidence_zero_disables_gate_margin_still_governs() {
+    // T022 v1: confidence = 0.0 is the per-backend off switch — the gate
+    // never fires on conf while margin still governs. An MLX answer at
+    // conf .5 / margin .9 is kept even though the global [jev] conf floor
+    // (.75) would have escalated it.
+    let mut cfg = cfg_with_ane();
+    cfg.thresholds.mlx = Some(BackendThresholds {
+        confidence: Some(0.0),
+        margin: Some(0.3),
+        ..Default::default()
+    });
+
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.5, (0.95, 0.05));
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Mlx, mlx);
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg.clone(),
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Mlx, BackendKind::Jev],
+    );
+    let b: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": question(), "model": "english",
+    }))
+    .unwrap();
+    let out = r.predict(b).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Mlx);
+    assert!(!out.routing.escalated);
+    assert_eq!(jev.calls(), 0);
+
+    // Margin still governs with the confidence gate dead: margin .2 < .3
+    // escalates even though conf .9 is above every floor.
+    let mlx = MockBackend::ok(BackendKind::Mlx, 0.9, (0.6, 0.4));
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Mlx, mlx);
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg,
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Mlx, BackendKind::Jev],
+    );
+    let b: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": question(), "model": "english",
+    }))
+    .unwrap();
+    let out = r.predict(b).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Jev);
+    assert_eq!(
+        out.routing.jev_trigger.as_deref(),
+        Some(trigger::LOW_MARGIN)
+    );
+    assert_eq!(jev.calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn confidence_tripwire_fires_below_the_floor() {
+    // T022 v1: a floored (not disabled) confidence gate is the deep-tail
+    // tripwire. ANE conf floor .2: an answer at conf .15 / margin .9
+    // escalates on confidence — margin alone would have kept it.
+    let mut cfg = cfg_with_ane();
+    cfg.thresholds.ane = Some(BackendThresholds {
+        confidence: Some(0.2),
+        margin: Some(0.2),
+        ..Default::default()
+    });
+    let ane = MockBackend::ok(BackendKind::Ane, 0.15, (0.95, 0.05));
+    let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Ane, ane);
+    backends.insert(BackendKind::Jev, jev.clone());
+    let r = Router::for_test(
+        cfg,
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Ane, BackendKind::Jev],
+    );
+    let out = r.predict(body(json!(DE), "auto")).await.unwrap();
+    assert_eq!(out.routing.backend, BackendKind::Jev);
+    assert!(out.routing.escalated);
+    assert_eq!(
+        out.routing.jev_trigger.as_deref(),
+        Some(trigger::LOW_CONFIDENCE)
+    );
+    assert_eq!(jev.calls(), 1);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn escalate_on_retry_fires_jev() {
     let mut cfg = cfg_with_ane();
     cfg.jev.escalate_on_retry = true;
