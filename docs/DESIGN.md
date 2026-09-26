@@ -132,7 +132,7 @@ The required routing keys are checkpoint, backend, model_id, reason, token_count
 
 For a single question, `confidence` and `margin` are that answer's confidence and top-two probability margin. For multiple questions, the request-level values are the minimum confidence and minimum margin across answers (the event may also carry a per-question map). A low-margin trigger fires when any question crosses the configured threshold; this avoids hiding one ambiguous answer behind a confident aggregate.
 
-Every backend implements one normalized adapter contract: the router passes the validated `{state, questions}` request (plus model/task/lang metadata), and a successful adapter returns the same `{model, answers, usage}` payload. CoreML and MLX execute locally; Jev serializes that same body as `POST <base_url>/v1/systemone` and normalizes the provider response. The browser-oriented `jev_ultrafast.choose()` wrapper is not this contract: it constructs a specialized question set and returns a derived action decision, which remains outside jevalaya.
+Every backend implements one normalized adapter contract: the router passes the validated `{state, questions}` request (plus model/task/lang metadata), and a successful adapter returns the same `{model, answers, usage}` payload. CoreML and MLX execute locally; Jev serializes that same body as `POST <base_url>/v1/systemone` and normalizes the provider response. The local question contract is deliberately more permissive than TypeSafe's wire schema, so the Jev adapter translates at the boundary — choice label-lists become option maps, scalar criterion values become their `json.dumps` text, noul criteria are restricted to the provider's `true`/`false` keys (null/empty values drop, matching the local default-descriptor fallback), and shapes outside the provider's limits (choice >255 options, score outside 2–10 levels) fail closed with `invalid_request` before any paid call. The browser-oriented `jev_ultrafast.choose()` wrapper is not this contract: it constructs a specialized question set and returns a derived action decision, which remains outside jevalaya.
 
 When `compare` is present, the response keeps the normal primary `model`/`answers`/`usage` and adds a `compare` object containing one entry per requested backend, each with its normalized result (when available), `RouteDecision`, latency, cost, or a structured error. `compare=true` uses the configured comparison set; an explicit list is filtered through the health snapshot. A compare set has two or three distinct backends before health filtering; a one-backend set is ordinary routing, not compare mode.
 
@@ -140,7 +140,7 @@ Expose GET /health (preserving ok/model fields), GET /ready (readiness without f
 
 Status/error mapping is stable JSON with code and no stack trace:
 
-- 400 invalid_request: malformed JSON, missing state/questions, invalid question schema, unknown backend, or body over 256 KiB.
+- 400 invalid_request: malformed JSON, missing state/questions, invalid question schema, unknown backend, body over 256 KiB, or an explicit-backend request that is locally valid but outside the target provider's contract (e.g. a score rubric beyond Jev's 2–10 levels). In auto mode the same condition never reaches the consumer: the adapter refuses pre-dispatch and the router keeps the local answer with `escalation_error: invalid_request`.
 - 401 unauthorized: public bearer token missing/incorrect.
 - 404 not_found: unknown path.
 - 409 backend_unavailable: explicitly requested backend is disabled/not configured.

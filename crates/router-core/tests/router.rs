@@ -350,7 +350,11 @@ async fn ane_fit_overrides_detected_language() {
     assert_eq!(d.backend, BackendKind::Mlx);
     assert_eq!(d.checkpoint, Some(Checkpoint::Multilingual));
     assert_eq!(d.reason_prefix(), reason::ANE_UNAVAILABLE);
-    assert!(d.reason.contains(reason::ANE_FIT_MULTILINGUAL), "{}", d.reason);
+    assert!(
+        d.reason.contains(reason::ANE_FIT_MULTILINGUAL),
+        "{}",
+        d.reason
+    );
     assert!(d.ane_eligible);
     assert!(d.degraded);
 
@@ -708,6 +712,92 @@ async fn jev_escalation_failure_keeps_local_answer() {
     assert_eq!(out.model, "mlx-model");
 }
 
+/// T030 score/noul question set (two questions → always MLX via the
+/// question_count gate) whose flat score distribution trips the margin
+/// gate, plus the local answers to retain verbatim.
+fn score_noul_rig(
+    jev_results: Vec<Result<BackendResult, BackendError>>,
+) -> (Router, PredictBody, Value) {
+    let questions: Map<String, Value> = json!({
+        "sev": {"type": "score", "instructions": "how severe?",
+                "criteria": ["trivial", "annoying", "unusable"]},
+        "refund": {"type": "noul", "instructions": "refund?"},
+    })
+    .as_object()
+    .unwrap()
+    .clone();
+    // score margin 0.05 and noul margin 0.2 — min 0.05 < the .20 gate.
+    let local_answers = json!({
+        "sev": {"type": "score", "score": 1.1, "confidence": 0.4,
+                "legend": {"0": "trivial", "1": "annoying", "2": "unusable"},
+                "probabilities": {"0": 0.4, "1": 0.35, "2": 0.25},
+                "action": {"act_probability": 1.0}},
+        "refund": {"type": "noul", "noul": 0.4, "confidence": 0.6,
+                   "action": {"act_probability": 0.9}},
+    });
+    let mlx = MockBackend::scripted(
+        BackendKind::Mlx,
+        vec![Ok(BackendResult {
+            model: "mlx-model".into(),
+            answers: local_answers.clone(),
+            usage: json!({}),
+            latency_ms: 3,
+        })],
+    );
+    let jev = MockBackend::scripted(BackendKind::Jev, jev_results);
+    let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
+    backends.insert(BackendKind::Mlx, mlx);
+    backends.insert(BackendKind::Jev, jev);
+    let r = Router::for_test(
+        cfg_with_ane(),
+        Arc::new(ScriptedEngine::new(20, 20)),
+        backends,
+        vec![BackendKind::Mlx, BackendKind::Jev],
+    );
+    let body: PredictBody = serde_json::from_value(json!({
+        "state": EN, "questions": questions, "backend": "auto",
+    }))
+    .unwrap();
+    (r, body, local_answers)
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn score_noul_escalation_422_keeps_local_answer() {
+    // T030: a score/noul auto request that trips the margin gate and hits
+    // a provider 422 must keep the validated local answers — degraded,
+    // never an HTTP error and never an empty answers map.
+    let (r, body, local_answers) = score_noul_rig(vec![Err(BackendError::Upstream(
+        Some(422),
+        "provider returned HTTP 422".into(),
+    ))]);
+    let out = r.predict(body).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Mlx);
+    assert!(d.escalated);
+    assert_eq!(d.jev_trigger.as_deref(), Some(trigger::LOW_MARGIN));
+    assert_eq!(d.escalation_error.as_deref(), Some("upstream"));
+    assert!(d.degraded);
+    assert_eq!(out.answers, local_answers);
+    assert_eq!(out.model, "mlx-model");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn score_noul_escalation_unservable_keeps_local_answer() {
+    // T030: the Jev adapter can refuse a locally-valid question that is
+    // outside the provider contract without a paid call — the stable code
+    // must surface as `invalid_request` with the local answer retained.
+    let (r, body, local_answers) = score_noul_rig(vec![Err(BackendError::InvalidRequest(
+        "score criteria outside 2-10".into(),
+    ))]);
+    let out = r.predict(body).await.unwrap();
+    let d = &out.routing;
+    assert_eq!(d.backend, BackendKind::Mlx);
+    assert!(d.escalated);
+    assert_eq!(d.escalation_error.as_deref(), Some("invalid_request"));
+    assert!(d.degraded);
+    assert_eq!(out.answers, local_answers);
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn per_backend_thresholds_judge_the_serving_backend() {
     // T022: identical answer (conf .65, margin .90) — under ANE gates
@@ -750,7 +840,10 @@ async fn per_backend_thresholds_judge_the_serving_backend() {
     let mlx = MockBackend::ok(BackendKind::Mlx, 0.65, (0.95, 0.05));
     let jev = MockBackend::ok(BackendKind::Jev, 0.95, (0.95, 0.05));
     let mut backends: HashMap<BackendKind, Arc<dyn PredictBackend>> = HashMap::new();
-    backends.insert(BackendKind::Ane, MockBackend::ok(BackendKind::Ane, 0.9, (0.9, 0.1)));
+    backends.insert(
+        BackendKind::Ane,
+        MockBackend::ok(BackendKind::Ane, 0.9, (0.9, 0.1)),
+    );
     backends.insert(BackendKind::Mlx, mlx.clone());
     backends.insert(BackendKind::Jev, jev.clone());
     let r = Router::for_test(

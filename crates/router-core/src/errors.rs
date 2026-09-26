@@ -73,6 +73,7 @@ impl RouteError {
             BackendError::Unavailable(m) => RouteError::NotReady(m),
             BackendError::NotReady(m) => RouteError::NotReady(m),
             BackendError::MissingCredential(m) => RouteError::NotReady(m),
+            BackendError::InvalidRequest(m) => RouteError::InvalidRequest(m),
             BackendError::Timeout(ms) => RouteError::Upstream(format!("timed out after {ms}ms")),
             BackendError::Transport(m) => RouteError::Upstream(m),
             BackendError::Upstream(_, m) => RouteError::Upstream(m),

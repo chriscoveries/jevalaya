@@ -181,6 +181,13 @@ pub enum BackendError {
     Inference(String),
     #[error("missing credential: {0}")]
     MissingCredential(String),
+    /// The request is valid under the local contract but this backend
+    /// cannot serve it (e.g. a score rubric wider than the provider's
+    /// level cap). Distinct from `Unavailable`: nothing about the backend
+    /// is wrong — the request itself is out of contract. Auto mode keeps
+    /// the local answer; explicit pins map to 400 `invalid_request`.
+    #[error("request not servable by this backend: {0}")]
+    InvalidRequest(String),
     /// ANE capacity/shape classes (DESIGN.md §Native CoreML ANE): transient
     /// memory pressure / compute-unit exhaustion. Permits exactly one MLX
     /// retry.
@@ -209,6 +216,7 @@ impl BackendError {
             BackendError::InvalidResponse(_) => "invalid_response",
             BackendError::Inference(_) => "inference_failed",
             BackendError::MissingCredential(_) => "missing_credential",
+            BackendError::InvalidRequest(_) => "invalid_request",
             BackendError::Capacity(_) => "ane_capacity",
             BackendError::Shape(_) => "ane_shape",
         }

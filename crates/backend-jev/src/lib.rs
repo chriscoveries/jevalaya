@@ -164,7 +164,7 @@ impl JevBackend {
         state: &Value,
         questions: &Map<String, Value>,
     ) -> Result<BackendResult, BackendError> {
-        let questions = jev_questions(questions);
+        let questions = jev_questions(questions)?;
         let body = serde_json::json!({
             "model": self.config.model,
             "state": state,
@@ -193,36 +193,145 @@ impl JevBackend {
     }
 }
 
-/// TypeSafe requires `criteria` as a dict for choice questions; the shared
-/// laya schema also accepts a bare label list (`dict.fromkeys` semantics).
-/// Upgrade all-string lists to `{label: null}` at the adapter boundary so
-/// any laya-valid choice request is Jev-compatible (verified: the provider
-/// accepts null descriptors; a list body is a 422).
+/// Adapter boundary: the permissive laya question contract becomes the
+/// provider's stricter schema here (docs.typesafe.ai/api). Everything the
+/// local renderer accepts must leave this function provider-valid, or the
+/// escalation deterministically 422s and burns a paid call (T030):
 ///
-/// Score level-lists are NOT upgraded: the list order IS the ordinal scale,
-/// and rewriting it as a dict is exactly what the provider 422s (T029).
-fn jev_questions(questions: &Map<String, Value>) -> Map<String, Value> {
+/// * `choice` — `criteria` must be a map of ≤255 options; a bare label
+///   list upgrades to `{label: null}` (`dict.fromkeys` semantics;
+///   verified: the provider accepts null descriptors, a list body is a
+///   422). Option values must be string|object|array|null.
+/// * `score` — `criteria` is an ordered array of 2–10 levels; the list
+///   order IS the ordinal scale, so it is never dict-ified (a dict body
+///   is a 422). Level entries must be string|object|array.
+/// * `noul` — `criteria` is an optional object with only `true`/`false`
+///   keys, values string|object|array. Extra keys are ignored by the
+///   local renderer (`crit.get`), so dropping them preserves semantics
+///   exactly.
+///
+/// Scalars the local renderer accepts (a numeric `score` rubric, a bool
+/// option descriptor, non-string `instructions`) are rendered to their
+/// `json.dumps` text — the provider sees the same option text the local
+/// model scored. Shapes no normalization can preserve (score level count
+/// outside 2–10, choice over 255 options) fail with `InvalidRequest`
+/// *before* posting: auto mode keeps the local answer
+/// (`escalation_error: invalid_request`, degraded), an explicit pin gets
+/// 400 naming the offending question.
+fn jev_questions(questions: &Map<String, Value>) -> Result<Map<String, Value>, BackendError> {
+    /// Provider-side scalar rendering: local `render_criterion` is
+    /// `json.dumps` for non-strings, so numbers/bools/null become their
+    /// JSON text (`5` → `"5"`, `false` → `"false"`, `null` → `"null"`).
+    fn provider_value(v: &Value, allow_null: bool) -> Value {
+        match v {
+            Value::Null if allow_null => Value::Null,
+            Value::String(_) | Value::Object(_) | Value::Array(_) => v.clone(),
+            other => Value::String(other.to_string()),
+        }
+    }
+    let unservable = |why: String| BackendError::InvalidRequest(why);
+
     let mut out = questions.clone();
-    for qdef in out.values_mut() {
+    for (qid, qdef) in out.iter_mut() {
         let Some(obj) = qdef.as_object_mut() else {
             continue;
         };
-        if obj.get("type").and_then(Value::as_str) != Some("choice") {
-            continue;
+        if let Some(ins) = obj.get("instructions") {
+            if !matches!(ins, Value::String(_) | Value::Object(_) | Value::Array(_)) {
+                obj.insert("instructions".to_string(), provider_value(ins, false));
+            }
         }
-        let Some(Value::Array(labels)) = obj.get("criteria") else {
-            continue;
-        };
-        if labels.is_empty() || !labels.iter().all(|l| l.is_string()) {
-            continue;
+        match obj.get("type").and_then(Value::as_str) {
+            Some("choice") => {
+                let pairs: Vec<(String, Value)> = match obj.get("criteria") {
+                    Some(Value::Array(labels)) => {
+                        if labels.is_empty() || !labels.iter().all(|l| l.is_string()) {
+                            return Err(unservable(format!(
+                                "question {qid:?}: choice criteria must be a map or label list"
+                            )));
+                        }
+                        labels
+                            .iter()
+                            .map(|l| (l.as_str().unwrap().to_string(), Value::Null))
+                            .collect()
+                    }
+                    Some(Value::Object(m)) => m
+                        .iter()
+                        .map(|(k, v)| {
+                            // Local render treats "" like None — a bare
+                            // label — so it becomes the provider's null
+                            // descriptor rather than an empty string.
+                            if v.as_str() == Some("") {
+                                (k.clone(), Value::Null)
+                            } else {
+                                (k.clone(), provider_value(v, true))
+                            }
+                        })
+                        .collect(),
+                    _ => {
+                        return Err(unservable(format!(
+                            "question {qid:?}: choice criteria must be a map"
+                        )))
+                    }
+                };
+                if pairs.len() > 255 {
+                    return Err(unservable(format!(
+                        "question {qid:?}: {} options exceed the provider's 255-option cap",
+                        pairs.len()
+                    )));
+                }
+                obj.insert(
+                    "criteria".to_string(),
+                    Value::Object(pairs.into_iter().collect()),
+                );
+            }
+            Some("score") => {
+                let Some(Value::Array(levels)) = obj.get("criteria") else {
+                    return Err(unservable(format!(
+                        "question {qid:?}: score criteria must be an ordered level list"
+                    )));
+                };
+                if !(2..=10).contains(&levels.len()) {
+                    return Err(unservable(format!(
+                        "question {qid:?}: {} score levels outside the provider's 2–10 range",
+                        levels.len()
+                    )));
+                }
+                let levels: Vec<Value> = levels.iter().map(|l| provider_value(l, false)).collect();
+                obj.insert("criteria".to_string(), Value::Array(levels));
+            }
+            Some("noul") => match obj.get("criteria") {
+                Some(Value::Object(m)) => {
+                    // Local render: `crit.get("true"/"false")` and a None
+                    // or "" value falls back to the built-in descriptor —
+                    // so null/empty keys drop here and the provider applies
+                    // its own defaults. Other scalars stringify.
+                    let kept: Map<String, Value> = m
+                        .iter()
+                        .filter(|(k, v)| {
+                            matches!(k.as_str(), "true" | "false")
+                                && !v.is_null()
+                                && v.as_str() != Some("")
+                        })
+                        .map(|(k, v)| (k.clone(), provider_value(v, false)))
+                        .collect();
+                    if kept.is_empty() {
+                        obj.remove("criteria");
+                    } else {
+                        obj.insert("criteria".to_string(), Value::Object(kept));
+                    }
+                }
+                Some(Value::Null) | None => {}
+                Some(_) => {
+                    return Err(unservable(format!(
+                        "question {qid:?}: noul criteria must be an object with true/false keys"
+                    )))
+                }
+            },
+            _ => {}
         }
-        let dict: Map<String, Value> = labels
-            .iter()
-            .filter_map(|l| l.as_str().map(|s| (s.to_string(), Value::Null)))
-            .collect();
-        obj.insert("criteria".to_string(), Value::Object(dict));
     }
-    out
+    Ok(out)
 }
 
 /// Choice-answer invariants, mirroring `validate_choice`: the selected label
@@ -535,13 +644,99 @@ mod tests {
         .as_object()
         .unwrap()
         .clone();
-        let out = jev_questions(&questions);
+        let out = jev_questions(&questions).unwrap();
         assert_eq!(
             out["sev"]["criteria"],
             serde_json::json!(["trivial", "annoying", "unusable"])
         );
-        assert_eq!(out["topic"]["criteria"], serde_json::json!({"a": null, "b": null}));
+        assert_eq!(
+            out["topic"]["criteria"],
+            serde_json::json!({"a": null, "b": null})
+        );
         assert!(out["ok"].get("criteria").is_none());
+    }
+
+    #[test]
+    fn scalar_criteria_render_to_provider_strings() {
+        // T030: the local contract renders any JSON value into the prompt
+        // (`render_criterion` → json.dumps), but TypeSafe's schema only
+        // accepts string|object|array. A 5-point numeric rubric or a bool
+        // option descriptor is laya-valid yet deterministically 422s —
+        // scalars become their rendered text so the provider sees the same
+        // option the local model scored.
+        let questions: Map<String, Value> = serde_json::json!({
+            "sev": {"type": "score", "instructions": "rate", "criteria": [1, 2, 3, 4, 5]},
+            "pick": {"type": "choice", "instructions": "p",
+                     "criteria": {"a": 0, "b": false, "c": null, "d": "s"}},
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        let out = jev_questions(&questions).unwrap();
+        assert_eq!(
+            out["sev"]["criteria"],
+            serde_json::json!(["1", "2", "3", "4", "5"])
+        );
+        assert_eq!(
+            out["pick"]["criteria"],
+            serde_json::json!({"a": "0", "b": "false", "c": null, "d": "s"})
+        );
+    }
+
+    #[test]
+    fn noul_criteria_filtered_to_true_false() {
+        // T030: local noul criteria ignore every key except `true`/`false`
+        // (`crit.get`), so `{"yes": ..., "no": ...}` answers fine locally
+        // but 422s at the provider's strict object schema. Filter to the
+        // two keys the provider knows — semantics identical to the local
+        // render — and drop the key entirely when nothing survives.
+        let questions: Map<String, Value> = serde_json::json!({
+            "a": {"type": "noul", "instructions": "i",
+                  "criteria": {"yes": "definitely", "no": "never",
+                               "true": "holds", "extra": 3}},
+            "b": {"type": "noul", "instructions": "i",
+                  "criteria": {"yes": "only foreign keys"}},
+            "c": {"type": "noul", "instructions": "i",
+                  "criteria": {"true": null, "false": "keep"}},
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        let out = jev_questions(&questions).unwrap();
+        // `true` survives (scalar 3 stringified), the foreign keys drop —
+        // exactly the keys the local renderer read.
+        assert_eq!(out["a"]["criteria"], serde_json::json!({"true": "holds"}));
+        assert!(out["b"].get("criteria").is_none());
+        // null/"" keys render as the built-in default locally, so they drop
+        // rather than shipping a literal "null" descriptor.
+        assert_eq!(out["c"]["criteria"], serde_json::json!({"false": "keep"}));
+    }
+
+    #[tokio::test]
+    async fn provider_limit_violations_fail_before_posting() {
+        // T030: a locally-valid question outside the provider's limits is
+        // a doomed paid call — the adapter must refuse without hitting the
+        // wire so auto mode keeps the local answer instead of a 422.
+        for questions in [
+            serde_json::json!({"s": {"type": "score", "instructions": "i",
+                "criteria": ["only-one"]}}),
+            serde_json::json!({"s": {"type": "score", "instructions": "i",
+                "criteria": (0..11).map(|i| format!("l{i}")).collect::<Vec<_>>()}}),
+            serde_json::json!({"c": {"type": "choice", "instructions": "i",
+                "criteria": (0..256).map(|i| format!("o{i}")).collect::<Vec<_>>()}}),
+        ] {
+            let mock = serve(vec![(200, good_body())]);
+            let client = client_for(&mock);
+            let err = client
+                .predict_json(&serde_json::json!("s"), questions.as_object().unwrap())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, BackendError::InvalidRequest(_)),
+                "expected InvalidRequest, got {err:?}"
+            );
+            assert_eq!(mock.hits.load(Ordering::SeqCst), 0);
+        }
     }
 
     #[test]
