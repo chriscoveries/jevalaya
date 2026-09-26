@@ -52,6 +52,12 @@ pub trait PromptEngine: Send + Sync {
         state: &serde_json::Value,
         q: &Question,
     ) -> Result<usize, RouteError>;
+    /// Whether this checkpoint's tokenizer/budgets loaded (false when the
+    /// model dir failed at boot). Dispatch must refuse a missing checkpoint
+    /// honestly instead of letting the backend die later as a 500: Python
+    /// resolves the same local model dirs, so an unloadable checkpoint can
+    /// never be served.
+    fn has_tokenizer(&self, checkpoint: Checkpoint) -> bool;
 }
 
 /// Real engine over `jevalaya-render`: per-checkpoint tokenizers/budgets
@@ -211,5 +217,9 @@ impl PromptEngine for LayaPromptEngine {
         )
         .map_err(render_err)?;
         Ok(ids.len())
+    }
+
+    fn has_tokenizer(&self, checkpoint: Checkpoint) -> bool {
+        self.checkpoints.contains_key(&checkpoint)
     }
 }

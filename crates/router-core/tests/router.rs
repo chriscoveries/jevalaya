@@ -18,6 +18,7 @@ struct ScriptedEngine {
     ane: GateCounts,
     ckpt: GateCounts,
     ane_available: bool,
+    ckpt_available: bool,
 }
 
 impl ScriptedEngine {
@@ -32,7 +33,12 @@ impl ScriptedEngine {
                 aligned_count: aligned,
             },
             ane_available: true,
+            ckpt_available: true,
         }
+    }
+    fn without_ckpt(mut self) -> Self {
+        self.ckpt_available = false;
+        self
     }
 }
 
@@ -60,6 +66,9 @@ impl PromptEngine for ScriptedEngine {
         _q: &Question,
     ) -> Result<usize, RouteError> {
         Ok(self.ckpt.raw_count.min(64))
+    }
+    fn has_tokenizer(&self, _c: Checkpoint) -> bool {
+        self.ckpt_available
     }
 }
 
@@ -543,6 +552,39 @@ async fn explicit_backend_overrides() {
     );
     let err = r.router.predict(body(json!(EN), "mlx")).await.unwrap_err();
     assert_eq!(err.status(), 409);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn missing_checkpoint_tokenizer_refuses_503_without_dispatch() {
+    // T026: the checkpoint model dir failed at boot (no tokenizer), so the
+    // MLX bridge would only die later inside Python as a 500
+    // FileNotFoundError. Refuse honestly as 503 not_ready and never call
+    // the backend — both auto-routed (over ANE budget) and explicitly pinned.
+    let r = rig(
+        ScriptedEngine::new(97, 97).without_ckpt(),
+        cfg_with_ane(),
+        true,
+        true,
+        true,
+    );
+    let err = r.router.predict(body(json!(EN), "auto")).await.unwrap_err();
+    assert_eq!(err.status(), 503);
+    assert_eq!(err.code(), "not_ready");
+    assert_eq!(r.mlx.calls(), 0);
+    assert_eq!(r.ane.calls(), 0);
+
+    let r = rig(
+        ScriptedEngine::new(20, 20).without_ckpt(),
+        cfg_with_ane(),
+        true,
+        true,
+        true,
+    );
+    let err = r.router.predict(body(json!(EN), "mlx")).await.unwrap_err();
+    assert_eq!(err.status(), 503);
+    assert_eq!(err.code(), "not_ready");
+    assert_eq!(r.mlx.calls(), 0);
+    assert_eq!(r.ane.calls(), 0);
 }
 
 #[tokio::test(flavor = "current_thread")]

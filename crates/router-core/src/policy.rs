@@ -362,6 +362,17 @@ pub fn route(
     }
 
     if avail.mlx {
+        // Fail closed when the selected checkpoint never loaded (its
+        // tokenizer/budgets failed at boot, warned there): the MLX bridge
+        // resolves the same local model dirs, so dispatch would only die
+        // later inside Python as a 500 FileNotFoundError. Refuse honestly
+        // as 503 not_ready instead.
+        if !engine.has_tokenizer(cp) {
+            return Err(RouteError::NotReady(format!(
+                "{} tokenizer unavailable — checkpoint model not loaded",
+                cp.as_str()
+            )));
+        }
         let prefix = match req.backend {
             BackendSpec::Mlx => reason::EXPLICIT_BACKEND,
             _ => first_fail.unwrap_or(reason::ANE_UNAVAILABLE),
