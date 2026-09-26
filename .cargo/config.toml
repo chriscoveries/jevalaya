@@ -1,0 +1,9 @@
+# backend-mlx-pyo3 embeds whatever interpreter PyO3 resolves at build
+# time. An ambient python3 (Homebrew 3.14+) produces a binary whose MLX
+# bridge cannot import the venv's cpython-313 extensions (numpy). Pin the
+# build to the laya-mlx sibling venv, which is the interpreter whose
+# site-packages [mlx].python_path loads at runtime. This default does not
+# override an exported PYO3_PYTHON — set your own to build against a
+# different interpreter.
+[env]
+PYO3_PYTHON = { value = "../laya-mlx/.venv/bin/python3", relative = true }

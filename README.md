@@ -157,7 +157,7 @@ export TYPESAFE_API_KEY=...                         # only if you enable Jev
 
 Notes that matter:
 
-- **`PYO3_PYTHON` is a build-time binding.** The interpreter PyO3 embeds is chosen when you compile, not when you run — set it to your venv python *before* `cargo build` or MLX will pick up the wrong site-packages. (Prebuilt releases were built against Python 3.13.)
+- **`PYO3_PYTHON` is a build-time binding.** The interpreter PyO3 embeds is chosen when you compile, not when you run — if it doesn't match the site-packages you serve from, the MLX bridge can't import them. The committed `.cargo/config.toml` pins the default to the sibling `../laya-mlx/.venv` checkout (the reference 3.13); an exported `PYO3_PYTHON` still wins if your layout differs. (Prebuilt releases were built against Python 3.13.)
 - **`[mlx] python_path`** in the config is a list of `sys.path` entries: the directory containing `laya_mlx/` (a laya-mlx checkout, or your site-packages if pip-installed) plus your venv's `site-packages`.
 - **`[ane] model`** is the CoreML bundle dir (`laya-multilingual-coreml-ane`), separate from the MLX checkpoints.
 - **`offline = true`** keeps hub resolution fully local once the snapshots exist.
