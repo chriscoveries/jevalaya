@@ -12,8 +12,10 @@ Usage:
     sweep.py --samples ... --out ... --resume   # skip ids already recorded
 
 Output lines: {id, dataset, label, predicted, correct, backend, checkpoint,
-confidence, margin, token_count, ane_eligible, escalated, would_escalate,
-escalate_triggers, latency_ms (client), server_latency_ms, reason, error}.
+confidence, margin, probabilities, act_probability, n_options,
+execution_token_count, usage, token_count, ane_eligible, escalated,
+would_escalate, escalate_triggers, latency_ms (client), server_latency_ms,
+reason, error}.
 """
 
 import argparse
@@ -93,6 +95,14 @@ def run_sample(client, url, token, sample, args, labels):
         "checkpoint": None,
         "confidence": None,
         "margin": None,
+        # T053 abstention-evidence retention: full per-option distribution,
+        # action probability, and execution token counts for offline gate
+        # calibration. Additive — every pre-existing key keeps its meaning.
+        "probabilities": None,
+        "act_probability": None,
+        "n_options": None,
+        "execution_token_count": None,
+        "usage": None,
         "token_count": None,
         "ane_eligible": None,
         "escalated": None,
@@ -123,6 +133,15 @@ def run_sample(client, url, token, sample, args, labels):
             checkpoint=routing.get("checkpoint"),
             confidence=conf,
             margin=margin,
+            probabilities=answer.get("probabilities"),
+            act_probability=(answer.get("action") or {}).get("act_probability")
+            if isinstance(answer.get("action"), dict)
+            else None,
+            n_options=len(answer["probabilities"])
+            if isinstance(answer.get("probabilities"), dict)
+            else None,
+            execution_token_count=routing.get("execution_token_count"),
+            usage=data.get("usage"),
             token_count=routing.get("token_count"),
             ane_eligible=routing.get("ane_eligible"),
             escalated=routing.get("escalated"),
