@@ -1,6 +1,6 @@
 # jevalaya Rust service design
 
-Status: implementation design for the jevalaya Rust HTTP service (github.com/eafire15/jevalaya), reviewed against the current laya-mlx and jev-ultrafast sources and the post-draft board decisions.
+Status: implementation design for the jevalaya Rust HTTP service (github.com/chriscoveries/jevalaya), reviewed against the current laya-mlx and jev-ultrafast sources and the post-draft board decisions.
 
 This document defines a model-agnostic router service. The service ships routing, prompt/parity logic, HTTP, lifecycle, and backend adapters; users supply model directories and remote endpoint configuration. It does not vendor laya-mlx, laya-coreml, model weights, or TypeSafe credentials.
 
